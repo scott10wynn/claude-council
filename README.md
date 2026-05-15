@@ -55,6 +55,7 @@ Inside tmux, results stream into a side pane in real time with vendor-colored ba
 - Specialized roles, debate mode, and agent-enhanced deep analysis for high-stakes decisions
 - Extensible provider system — add new AI agents easily
 - Proactive agent that suggests consulting the council on architecture / debugging dead ends
+- **LinkedIn + Handshake connectors** — inject your career profile into council queries for personalized advice
 
 ## Installation
 
@@ -458,6 +459,48 @@ export COUNCIL_ATTENTION_THRESHOLD=5000  # only bounce dock if run > 5s
 ```
 
 Per-call opt-out via `--no-pane`. iTerm2 features no-op silently outside iTerm2; pane no-ops outside tmux.
+
+## Career Advice (LinkedIn + Handshake)
+
+Get AI career advice grounded in your actual profile:
+
+```bash
+/claude-council:career "Should I apply to this internship or wait for full-time?"
+/claude-council:career "Review my LinkedIn headline and summary"
+/claude-council:career "How do I stand out for product management roles?"
+```
+
+The command loads your LinkedIn and Handshake profiles as context before querying providers.
+
+### LinkedIn Setup (choose one)
+
+**Option A — Data export (recommended, full profile)**
+1. Go to LinkedIn → Settings → Data Privacy → Get a copy of your data
+2. Request: Profile, Positions, Education, Skills — download and extract the ZIP
+3. `export LINKEDIN_EXPORT_DIR="/path/to/extracted-zip"`
+
+**Option B — Access token (live API, limited scope)**
+1. Create a LinkedIn app at linkedin.com/developers/apps
+2. Complete the OAuth 2.0 flow to get an access token
+3. `export LINKEDIN_ACCESS_TOKEN="your-token"`
+
+**Option C — Profile file (manual)**
+Write a JSON or plain-text file describing your profile, then:
+`export LINKEDIN_PROFILE_FILE="/path/to/profile.json"`
+
+### Handshake Setup (choose one)
+
+**Option A — Session token (live API)**
+1. Log into app.joinhandshake.com in your browser
+2. Open DevTools → Application → Cookies → copy the `_hs_session` value
+3. `export HANDSHAKE_SESSION_TOKEN="your-session-value"`
+
+**Option B — Profile file (manual)**
+Write a JSON or plain-text file with your Handshake profile info, then:
+`export HANDSHAKE_PROFILE_FILE="/path/to/handshake-profile.json"`
+
+Profile data is cached for 1 hour. Use `/claude-council:career --no-cache` to force a refresh.
+Skip a connector for a single call: `--no-linkedin` or `--no-handshake`.
 
 ## Adding New Providers
 
