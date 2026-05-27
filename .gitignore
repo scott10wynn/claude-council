@@ -27,3 +27,9 @@ claude-council-workspace/
 *.swo
 *~
 autoresearch-results.tsv
+
+# Job Applicator
+job-applicator/data/
+job-applicator/uploads/
+job-applicator/.env
+job-applicator/__pycache__/

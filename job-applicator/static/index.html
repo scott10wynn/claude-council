@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Job Applicator</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Job Applicator</h1>
+    <p class="subtitle">Apply to multiple jobs with AI-generated cover letters</p>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="profile">Profile</button>
+    <button class="tab" data-tab="apply">Apply to Job</button>
+    <button class="tab" data-tab="tracker">Tracker <span id="app-count" class="badge">0</span></button>
+  </nav>
+
+  <!-- PROFILE TAB -->
+  <section id="tab-profile" class="tab-content active">
+    <div class="card">
+      <h2>Your Profile</h2>
+      <p class="hint">Your info is stored locally. Upload your resume once and it'll be reused for all applications.</p>
+
+      <div class="form-group">
+        <label>Full Name</label>
+        <input type="text" id="profile-name" placeholder="Jane Smith">
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="profile-email" placeholder="jane@example.com">
+      </div>
+      <div class="form-group">
+        <label>Phone</label>
+        <input type="tel" id="profile-phone" placeholder="+1 (555) 000-0000">
+      </div>
+
+      <div class="form-group">
+        <label>Resume (PDF)</label>
+        <div class="upload-area" id="upload-area">
+          <input type="file" id="resume-file" accept=".pdf" hidden>
+          <div class="upload-prompt" id="upload-prompt">
+            <span class="upload-icon">📄</span>
+            <p>Drop your PDF here or <button class="link-btn" onclick="document.getElementById('resume-file').click()">browse</button></p>
+            <p class="hint" id="resume-filename">No file selected</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group" id="resume-text-group" style="display:none">
+        <label>Extracted Resume Text <button class="link-btn small" onclick="toggleResumePreview()">toggle preview</button></label>
+        <textarea id="profile-resume-text" rows="8" placeholder="Resume text will appear here after upload..."></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>Anthropic API Key <span class="hint">(for AI cover letters)</span></label>
+        <input type="password" id="anthropic-key" placeholder="sk-ant-...">
+        <p class="hint">Stored in your local <code>.env</code> file, never sent anywhere except Anthropic's API.</p>
+      </div>
+
+      <button class="btn primary" onclick="saveProfile()">Save Profile</button>
+      <div id="profile-status" class="status-msg"></div>
+    </div>
+  </section>
+
+  <!-- APPLY TAB -->
+  <section id="tab-apply" class="tab-content">
+    <div class="card">
+      <h2>Apply to a Job</h2>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Company *</label>
+          <input type="text" id="apply-company" placeholder="Acme Corp">
+        </div>
+        <div class="form-group">
+          <label>Job Title *</label>
+          <input type="text" id="apply-title" placeholder="Software Engineer">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Job URL <span class="hint">(used for browser auto-fill)</span></label>
+        <input type="url" id="apply-url" placeholder="https://company.com/careers/...">
+      </div>
+
+      <div class="form-group">
+        <label>Job Description <span class="hint">(paste the full listing for best cover letters)</span></label>
+        <textarea id="apply-description" rows="8" placeholder="Paste the full job description here..."></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>Cover Letter</label>
+        <div class="cover-letter-actions">
+          <button class="btn secondary" onclick="generateCoverLetter()" id="gen-btn">✨ Generate with AI</button>
+          <span class="hint">or write your own below</span>
+        </div>
+        <textarea id="apply-cover-letter" rows="12" placeholder="Your cover letter will appear here..."></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>Notes</label>
+        <input type="text" id="apply-notes" placeholder="Recruiter name, deadline, etc.">
+      </div>
+
+      <div class="apply-actions">
+        <button class="btn primary" onclick="saveApplication()">💾 Save to Tracker</button>
+        <p class="hint">After saving, open the Tracker to send email or auto-fill the form.</p>
+      </div>
+
+      <div id="apply-status" class="status-msg"></div>
+    </div>
+  </section>
+
+  <!-- TRACKER TAB -->
+  <section id="tab-tracker" class="tab-content">
+    <div class="tracker-header">
+      <h2>Application Tracker</h2>
+      <div class="filter-row">
+        <label>Filter:</label>
+        <select id="status-filter" onchange="loadApplications()">
+          <option value="">All</option>
+          <option value="pending">Pending</option>
+          <option value="applied">Applied</option>
+          <option value="interviewing">Interviewing</option>
+          <option value="offer">Offer</option>
+          <option value="rejected">Rejected</option>
+        </select>
+      </div>
+    </div>
+    <div id="apps-list"></div>
+  </section>
+</div>
+
+<!-- EMAIL MODAL -->
+<div id="email-modal" class="modal hidden">
+  <div class="modal-box">
+    <h3>Send Application Email</h3>
+    <div class="form-group">
+      <label>Recipient Email *</label>
+      <input type="email" id="email-to" placeholder="recruiter@company.com">
+    </div>
+    <details class="smtp-details">
+      <summary>SMTP Settings (click to expand)</summary>
+      <div class="form-group">
+        <label>SMTP Host</label>
+        <input type="text" id="smtp-host" placeholder="smtp.gmail.com">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Port</label>
+          <input type="number" id="smtp-port" value="587">
+        </div>
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" id="smtp-user" placeholder="you@gmail.com">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Password / App Password</label>
+        <input type="password" id="smtp-password" placeholder="Gmail app password">
+      </div>
+    </details>
+    <div class="modal-actions">
+      <button class="btn primary" onclick="sendEmail()">Send Email</button>
+      <button class="btn secondary" onclick="closeModal('email-modal')">Cancel</button>
+    </div>
+    <div id="email-status" class="status-msg"></div>
+  </div>
+</div>
+
+<!-- APP DETAIL MODAL -->
+<div id="detail-modal" class="modal hidden">
+  <div class="modal-box large">
+    <h3 id="detail-title"></h3>
+    <div class="detail-meta">
+      <span id="detail-company"></span> &bull;
+      <span id="detail-status-badge" class="badge"></span>
+    </div>
+
+    <div class="detail-section">
+      <label>Status</label>
+      <select id="detail-status-select" onchange="updateStatus()">
+        <option value="pending">Pending</option>
+        <option value="applied">Applied</option>
+        <option value="interviewing">Interviewing</option>
+        <option value="offer">Offer</option>
+        <option value="rejected">Rejected</option>
+      </select>
+    </div>
+
+    <div class="detail-section">
+      <label>Cover Letter</label>
+      <textarea id="detail-cover-letter" rows="12" readonly></textarea>
+    </div>
+
+    <div class="detail-section">
+      <label>Notes</label>
+      <input type="text" id="detail-notes" placeholder="Notes...">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn primary" onclick="openEmailModal()">📧 Send Email</button>
+      <button class="btn secondary" onclick="triggerAutoFill()">🌐 Auto-fill Form</button>
+      <button class="btn danger" onclick="deleteApp()">🗑 Delete</button>
+      <button class="btn secondary" onclick="closeModal('detail-modal')">Close</button>
+    </div>
+    <div id="detail-status" class="status-msg"></div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
