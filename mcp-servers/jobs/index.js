@@ -7,12 +7,57 @@ import http from "http";
 
 const server = new McpServer({
   name: "job-search-free",
-  version: "1.1.0",
+  version: "1.2.0",
 });
 
 const USAJOBS_KEY = process.env.USAJOBS_API_KEY || "";
 const ADZUNA_ID = process.env.ADZUNA_APP_ID || "";
 const ADZUNA_KEY = process.env.ADZUNA_APP_KEY || "";
+
+// Verified finance/fintech companies with active Greenhouse or Lever job boards
+const FINANCE_ATS_COMPANIES = [
+  // Fintech / neobanks
+  { slug: "robinhood",               name: "Robinhood",                ats: "greenhouse" },
+  { slug: "coinbase",                name: "Coinbase",                 ats: "greenhouse" },
+  { slug: "chime",                   name: "Chime",                    ats: "greenhouse" },
+  { slug: "sofi",                    name: "SoFi",                     ats: "greenhouse" },
+  { slug: "mercury",                 name: "Mercury",                  ats: "greenhouse" },
+  { slug: "betterment",              name: "Betterment",               ats: "greenhouse" },
+  { slug: "wealthfront",             name: "Wealthfront",              ats: "lever"      },
+  // Payments & infrastructure
+  { slug: "stripe",                  name: "Stripe",                   ats: "greenhouse" },
+  { slug: "brex",                    name: "Brex",                     ats: "greenhouse" },
+  { slug: "affirm",                  name: "Affirm",                   ats: "greenhouse" },
+  { slug: "marqeta",                 name: "Marqeta",                  ats: "greenhouse" },
+  { slug: "adyen",                   name: "Adyen",                    ats: "greenhouse" },
+  { slug: "payoneer",                name: "Payoneer",                 ats: "greenhouse" },
+  { slug: "melio",                   name: "Melio",                    ats: "greenhouse" },
+  // Equity / corporate finance tools
+  { slug: "carta",                   name: "Carta",                    ats: "greenhouse" },
+  { slug: "blend",                   name: "Blend",                    ats: "greenhouse" },
+  // Payroll / HR finance
+  { slug: "gusto",                   name: "Gusto",                    ats: "greenhouse" },
+  { slug: "justworks",               name: "Justworks",                ats: "greenhouse" },
+  // Finance-adjacent / investment banking
+  { slug: "financialtechnologypartners", name: "FT Partners",          ats: "greenhouse" },
+  { slug: "breezeairways",           name: "Breeze Airways",           ats: "greenhouse" },
+  { slug: "upwork",                  name: "Upwork",                   ats: "greenhouse" },
+];
+
+const FINANCE_TITLE_KEYWORDS = [
+  "financ", "accounti", "accountant", "fp&a", "treasury", "audit",
+  "tax", "budget", "invest", "controller", "payroll", "compliance",
+  "risk analyst", "credit", "equity", "capital", "banking", "actuar",
+  "underwr", "insurance analyst", "revenue", "billing", "bookkeep",
+];
+
+const FINANCE_EXCLUDE_TITLE = [
+  "account executive", "account manager", "sales", "marketing",
+  "software engineer", "data engineer", "devops", "designer",
+  "product manager", "recruiter", "legal", "support engineer",
+  "customer success", "software development", "data scientist",
+  "infrastructure", "security engineer", "machine learning",
+];
 
 function fetchJSON(url, extraHeaders = {}) {
   return new Promise((resolve, reject) => {
@@ -180,6 +225,99 @@ async function searchJobicy(query) {
     description: j.jobDescription?.replace(/<[^>]+>/g, "").slice(0, 300) + "...",
   }));
 }
+
+async function searchFinanceATS(query, internshipOnly) {
+  const q = query.toLowerCase();
+
+  const fetches = FINANCE_ATS_COMPANIES.map(async (co) => {
+    try {
+      let jobs = [];
+      if (co.ats === "greenhouse") {
+        const data = await fetchJSON(
+          `https://boards-api.greenhouse.io/v1/boards/${co.slug}/jobs`
+        );
+        jobs = (data?.jobs || []).map((j) => ({
+          title: j.title,
+          company: co.name,
+          location: j.location?.name || "Unknown",
+          url: j.absolute_url || `https://boards.greenhouse.io/${co.slug}/jobs/${j.id}`,
+          posted: j.updated_at?.slice(0, 10),
+          source: `${co.name} (Greenhouse)`,
+        }));
+      } else if (co.ats === "lever") {
+        const data = await fetchJSON(
+          `https://api.lever.co/v0/postings/${co.slug}?mode=json`
+        );
+        jobs = (Array.isArray(data) ? data : []).map((j) => ({
+          title: j.text,
+          company: co.name,
+          location: j.categories?.location || j.workplaceType || "Unknown",
+          url: j.hostedUrl || j.applyUrl,
+          posted: j.createdAt ? new Date(j.createdAt).toISOString().slice(0, 10) : null,
+          source: `${co.name} (Lever)`,
+        }));
+      }
+
+      return jobs.filter((j) => {
+        const title = j.title?.toLowerCase() || "";
+        const isExcluded = FINANCE_EXCLUDE_TITLE.some((ex) => title.includes(ex));
+        if (isExcluded) return false;
+        const wordMatch = (str, word) => new RegExp(`\\b${word}\\b`).test(str);
+        const isIntern = wordMatch(title, "intern") || wordMatch(title, "co-op") || title.includes("internship");
+        if (internshipOnly && !isIntern) return false;
+        const isFinance = FINANCE_TITLE_KEYWORDS.some((kw) => title.includes(kw));
+        if (!q) return isFinance;
+        const queryWords = q.split(/\s+/).filter(Boolean);
+        const matchesQuery = queryWords.every((w) => wordMatch(title, w) || title.includes(w));
+        return isFinance || matchesQuery;
+      });
+    } catch {
+      return [];
+    }
+  });
+
+  const results = await Promise.allSettled(fetches);
+  return results.flatMap((r) => r.status === "fulfilled" ? r.value : []);
+}
+
+server.tool(
+  "search_finance_native",
+  {
+    query: z.string().optional().default("").describe("Finance keywords to search for (e.g. 'FP&A', 'accounting intern', 'treasury'). Leave blank to return all finance roles."),
+    internship_only: z.boolean().optional().default(false).describe("Set true to return only internship and co-op roles"),
+  },
+  async ({ query, internship_only }) => {
+    const jobs = await searchFinanceATS(query, internship_only);
+
+    if (jobs.length === 0) {
+      return {
+        content: [{ type: "text", text: `No finance roles found matching "${query}" across the ${FINANCE_ATS_COMPANIES.length} company boards. Try broader terms like "finance" or "analyst".` }],
+      };
+    }
+
+    const grouped = {};
+    for (const job of jobs) {
+      if (!grouped[job.source]) grouped[job.source] = [];
+      grouped[job.source].push(job);
+    }
+
+    let out = `## Finance Native Job Board Results\n`;
+    out += `Searched **${FINANCE_ATS_COMPANIES.length} company career pages** directly via Greenhouse & Lever.\n`;
+    out += `Found **${jobs.length} finance roles**${internship_only ? " (internships/co-ops only)" : ""}${query ? ` matching "${query}"` : ""}.\n\n`;
+
+    for (const [source, list] of Object.entries(grouped)) {
+      out += `### ${source} (${list.length})\n`;
+      for (const job of list) {
+        out += `**[${job.title}](${job.url})**\n`;
+        out += `- Location: ${job.location}\n`;
+        if (job.posted) out += `- Updated: ${job.posted}\n`;
+        out += "\n";
+      }
+    }
+
+    return { content: [{ type: "text", text: out }] };
+  }
+);
 
 server.tool(
   "search_free_jobs",
