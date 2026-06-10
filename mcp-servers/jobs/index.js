@@ -7,13 +7,18 @@ import http from "http";
 
 const server = new McpServer({
   name: "job-search-free",
-  version: "1.0.0",
+  version: "1.1.0",
 });
 
-function fetchJSON(url) {
+const USAJOBS_KEY = process.env.USAJOBS_API_KEY || "";
+const ADZUNA_ID = process.env.ADZUNA_APP_ID || "";
+const ADZUNA_KEY = process.env.ADZUNA_APP_KEY || "";
+
+function fetchJSON(url, extraHeaders = {}) {
   return new Promise((resolve, reject) => {
     const client = url.startsWith("https") ? https : http;
-    const req = client.get(url, { headers: { "User-Agent": "claude-job-search/1.0" } }, (res) => {
+    const headers = { "User-Agent": "claude-job-search/1.0", ...extraHeaders };
+    const req = client.get(url, { headers }, (res) => {
       let data = "";
       res.on("data", (chunk) => (data += chunk));
       res.on("end", () => {
@@ -112,6 +117,54 @@ async function searchHimalayas(query) {
   }));
 }
 
+async function searchUSAJobs(query, location, radiusMiles) {
+  if (!USAJOBS_KEY) return [{ _noKey: true, source: "USAJobs" }];
+  const radius = radiusMiles || 25;
+  const loc = location || "United States";
+  const url = `https://data.usajobs.gov/api/search?Keyword=${encodeURIComponent(query)}&LocationName=${encodeURIComponent(loc)}&Radius=${radius}&ResultsPerPage=10`;
+  const data = await fetchJSON(url, {
+    "Authorization-Key": USAJOBS_KEY,
+    "Host": "data.usajobs.gov",
+  });
+  const items = data?.SearchResult?.SearchResultItems || [];
+  return items.map((i) => {
+    const d = i.MatchedObjectDescriptor;
+    return {
+      title: d?.PositionTitle,
+      company: d?.OrganizationName,
+      location: d?.PositionLocationDisplay,
+      type: d?.PositionOfferingType?.[0]?.Name,
+      url: d?.PositionURI,
+      posted: d?.PublicationStartDate?.slice(0, 10),
+      salary: d?.PositionRemuneration?.[0]
+        ? `$${d.PositionRemuneration[0].MinimumRange}–$${d.PositionRemuneration[0].MaximumRange} ${d.PositionRemuneration[0].RateIntervalCode}`
+        : null,
+      source: "USAJobs",
+      description: d?.UserArea?.Details?.JobSummary?.replace(/<[^>]+>/g, "").slice(0, 300) + "...",
+    };
+  });
+}
+
+async function searchAdzuna(query, location, radiusMiles) {
+  if (!ADZUNA_ID || !ADZUNA_KEY) return [{ _noKey: true, source: "Adzuna" }];
+  const dist = Math.round((radiusMiles || 20) * 1.60934);
+  const where = location || "United States";
+  const url = `https://api.adzuna.com/v1/api/jobs/us/search/1?app_id=${ADZUNA_ID}&app_key=${ADZUNA_KEY}&results_per_page=10&what=${encodeURIComponent(query)}&where=${encodeURIComponent(where)}&distance=${dist}&content-type=application/json`;
+  const data = await fetchJSON(url);
+  const jobs = data?.results || [];
+  return jobs.map((j) => ({
+    title: j.title,
+    company: j.company?.display_name,
+    location: j.location?.display_name,
+    type: j.contract_time || j.contract_type,
+    url: j.redirect_url,
+    posted: j.created?.slice(0, 10),
+    salary: j.salary_min ? `$${Math.round(j.salary_min).toLocaleString()}–$${Math.round(j.salary_max || j.salary_min).toLocaleString()}` : null,
+    source: "Adzuna",
+    description: j.description?.replace(/<[^>]+>/g, "").slice(0, 300) + "...",
+  }));
+}
+
 async function searchJobicy(query) {
   const url = `https://jobicy.com/api/v2/remote-jobs?count=10&tag=${encodeURIComponent(query)}`;
   const data = await fetchJSON(url);
@@ -133,12 +186,14 @@ server.tool(
   {
     query: z.string().describe("Job title, skills, or keywords to search for (e.g. 'software engineering internship', 'data science', 'frontend')"),
     type: z.enum(["any", "internship", "full_time", "part_time", "contract", "remote"]).optional().default("any").describe("Job type filter"),
-    sources: z.array(z.enum(["remotive", "remoteok", "themuse", "arbeitnow", "himalayas", "jobicy"])).optional().describe("Which job boards to search (default: all)"),
+    location: z.string().optional().describe("City and state, e.g. 'Cleveland, OH'"),
+    radius_miles: z.number().optional().describe("Search radius in miles from location"),
+    sources: z.array(z.enum(["remotive", "remoteok", "themuse", "arbeitnow", "himalayas", "jobicy", "usajobs", "adzuna"])).optional().describe("Which job boards to search (default: all)"),
   },
-  async ({ query, type, sources }) => {
+  async ({ query, type, location, radius_miles, sources }) => {
     const isInternship = type === "internship" || query.toLowerCase().includes("intern");
     const searchQuery = query;
-    const activeSources = sources || ["remotive", "remoteok", "themuse", "arbeitnow", "himalayas", "jobicy"];
+    const activeSources = sources || ["remotive", "remoteok", "themuse", "arbeitnow", "himalayas", "jobicy", "usajobs", "adzuna"];
 
     const searches = [];
     if (activeSources.includes("remotive")) searches.push(searchRemotive(searchQuery, type));
@@ -147,9 +202,14 @@ server.tool(
     if (activeSources.includes("arbeitnow")) searches.push(searchArbeitnow(searchQuery));
     if (activeSources.includes("himalayas")) searches.push(searchHimalayas(searchQuery));
     if (activeSources.includes("jobicy")) searches.push(searchJobicy(searchQuery));
+    if (activeSources.includes("usajobs")) searches.push(searchUSAJobs(searchQuery, location, radius_miles));
+    if (activeSources.includes("adzuna")) searches.push(searchAdzuna(searchQuery, location, radius_miles));
 
     const results = await Promise.allSettled(searches);
-    const allJobs = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+    const allRaw = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+
+    const missingKeys = [...new Set(allRaw.filter((j) => j._noKey).map((j) => j.source))];
+    const allJobs = allRaw.filter((j) => !j._noKey);
 
     const filtered = isInternship
       ? allJobs.filter((j) =>
@@ -167,12 +227,6 @@ server.tool(
       return true;
     });
 
-    if (deduped.length === 0) {
-      return {
-        content: [{ type: "text", text: `No jobs found across free job boards for "${query}". Try broader keywords like the field name alone.` }],
-      };
-    }
-
     const grouped = {};
     for (const job of deduped) {
       if (!grouped[job.source]) grouped[job.source] = [];
@@ -180,7 +234,22 @@ server.tool(
     }
 
     let output = `## Job Search Results for "${query}"\n\n`;
-    output += `Found **${deduped.length} listings** across ${Object.keys(grouped).length} free job boards.\n\n`;
+
+    if (missingKeys.length > 0) {
+      output += `> **API keys not configured for:** ${missingKeys.join(", ")}\n`;
+      for (const src of missingKeys) {
+        if (src === "USAJobs") output += `> - USAJobs: register free at https://developer.usajobs.gov → set env var \`USAJOBS_API_KEY\`\n`;
+        if (src === "Adzuna") output += `> - Adzuna: register free at https://developer.adzuna.com → set env vars \`ADZUNA_APP_ID\` and \`ADZUNA_APP_KEY\`\n`;
+      }
+      output += "\n";
+    }
+
+    if (deduped.length === 0) {
+      output += `No jobs found across the active job boards for "${query}". Try broader keywords.\n`;
+      return { content: [{ type: "text", text: output }] };
+    }
+
+    output += `Found **${deduped.length} listings** across ${Object.keys(grouped).length} job boards.\n\n`;
 
     for (const [source, jobs] of Object.entries(grouped)) {
       output += `### ${source} (${jobs.length} results)\n\n`;
@@ -189,6 +258,7 @@ server.tool(
         output += `- Company: ${job.company || "Unknown"}\n`;
         output += `- Location: ${job.location || "Unknown"}\n`;
         if (job.type) output += `- Type: ${job.type}\n`;
+        if (job.salary) output += `- Salary: ${job.salary}\n`;
         if (job.posted) output += `- Posted: ${job.posted}\n`;
         if (job.description) output += `- Preview: ${job.description}\n`;
         output += "\n";
