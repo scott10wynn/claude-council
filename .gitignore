@@ -19,6 +19,11 @@
 # Skill-creator iteration output
 claude-council-workspace/
 
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
 # OS files
 .DS_Store
 
