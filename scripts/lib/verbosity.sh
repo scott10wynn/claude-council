@@ -4,7 +4,7 @@
 
 # Base system prompt — used by all four providers. Edit here to change
 # the persona globally. Perplexity appends an additional citation clause.
-BASE_SYSTEM_PROMPT="You are an expert software engineering consultant. Provide clear, practical responses with code examples where helpful. Be thorough but concise - focus on actionable guidance."
+BASE_SYSTEM_PROMPT="You are an expert software engineering consultant. Answer directly — no preamble, no affirmations. Provide clear, practical responses with code examples where helpful. Be thorough but concise - focus on actionable guidance."
 
 # Writes a verbosity directive into the named variable based on the level.
 # Levels: brief, standard (no prefix), detailed.
@@ -16,6 +16,9 @@ verbosity_prefix() {
     local __out="$1"
     local level="${2:-standard}"
     case "$level" in
+        lean)
+            printf -v "$__out" '%s' "Answer only. No preamble, no explanation of what you are about to do. Maximum 3 bullet points or 2 sentences. No code blocks. No trade-offs, no alternatives, no edge cases unless the question specifically asks. Give one direct answer."
+            ;;
         brief)
             printf -v "$__out" '%s' "Keep responses to 3-5 sentences max. Use bullet points where possible. Skip code blocks unless explicitly asked. No edge cases."
             ;;
@@ -32,9 +35,9 @@ verbosity_prefix() {
 # Usage: validate_verbosity "$LEVEL" || exit 1
 validate_verbosity() {
     case "$1" in
-        brief|standard|detailed) return 0 ;;
+        lean|brief|standard|detailed) return 0 ;;
         *)
-            echo "Error: verbosity must be one of: brief, standard, detailed (got '$1')" >&2
+            echo "Error: verbosity must be one of: lean, brief, standard, detailed (got '$1')" >&2
             return 1
             ;;
     esac

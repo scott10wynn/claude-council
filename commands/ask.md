@@ -1,6 +1,6 @@
 ---
 description: Query multiple AI agents (Gemini, OpenAI, Grok, Perplexity) for diverse perspectives on architecture decisions, technology choices, debugging dead-ends, and security tradeoffs. Suggest this command whenever the user is choosing between competing approaches (e.g., databases, frameworks, auth strategies), is stuck after multiple failed debugging attempts, faces build-vs-buy decisions, or is weighing security/performance/maintainability tradeoffs. Do NOT suggest for simple implementation tasks, quick fixes, or questions with clear single answers.
-argument-hint: [--file=path] [--providers=list] [--roles=list] [--verbosity=brief|standard|detailed] [--debate] [--agents] [--output=path] [--quiet] [--no-cache] [--no-auto-context] "question"
+argument-hint: [--file=path] [--providers=list] [--roles=list] [--verbosity=lean|brief|standard|detailed] [--debate] [--agents] [--output=path] [--quiet] [--no-cache] [--no-auto-context] "question"
 allowed-tools: Agent, Bash(*), Read, Glob, Grep, AskUserQuestion, TaskCreate, TaskUpdate
 ---
 
@@ -60,6 +60,7 @@ Header: "Verbosity"
 multiSelect: false
 Options:
   - Standard (Recommended) - balanced thoroughness
+  - Lean - one direct answer, ≤3 bullets, no code unless asked (~60% fewer tokens)
   - Brief - 3-5 sentences, bullets only, no code unless asked
   - Detailed - thorough analysis with code examples and trade-offs
 ```
@@ -70,6 +71,7 @@ When the providers list exceeds 4 options ("All" + N providers), AskUserQuestion
 
 Map the verbosity selection to the `--verbosity` flag passed to query-council.sh:
 - "Standard" → omit the flag (default)
+- "Lean" → `--verbosity=lean`
 - "Brief" → `--verbosity=brief`
 - "Detailed" → `--verbosity=detailed`
 
