@@ -7,7 +7,7 @@ import http from "http";
 
 const server = new McpServer({
   name: "job-search-free",
-  version: "1.2.0",
+  version: "1.3.0",
 });
 
 const USAJOBS_KEY = process.env.USAJOBS_API_KEY || "";
@@ -42,6 +42,19 @@ const FINANCE_ATS_COMPANIES = [
   { slug: "financialtechnologypartners", name: "FT Partners",          ats: "greenhouse" },
   { slug: "breezeairways",           name: "Breeze Airways",           ats: "greenhouse" },
   { slug: "upwork",                  name: "Upwork",                   ats: "greenhouse" },
+  // Ashby ATS companies
+  { slug: "ramp",                    name: "Ramp",                     ats: "ashby"      },
+  { slug: "super.com",               name: "Super.com",                ats: "ashby"      },
+  { slug: "polymarket",              name: "Polymarket",               ats: "ashby"      },
+  { slug: "lightspeedhq",            name: "Lightspeed",               ats: "ashby"      },
+  { slug: "paxos",                   name: "Paxos",                    ats: "ashby"      },
+  { slug: "ideals",                  name: "iDeals",                   ats: "ashby"      },
+  { slug: "generate",                name: "Generate Capital",         ats: "ashby"      },
+  { slug: "clearbank",               name: "ClearBank",                ats: "ashby"      },
+  { slug: "moderntreasury",          name: "Modern Treasury",          ats: "ashby"      },
+  { slug: "datatonic",               name: "Datatonic",                ats: "ashby"      },
+  { slug: "dandelion",               name: "Dandelion",                ats: "ashby"      },
+  { slug: "tennr",                   name: "Tennr",                    ats: "ashby"      },
 ];
 
 const FINANCE_TITLE_KEYWORDS = [
@@ -256,6 +269,18 @@ async function searchFinanceATS(query, internshipOnly) {
           posted: j.createdAt ? new Date(j.createdAt).toISOString().slice(0, 10) : null,
           source: `${co.name} (Lever)`,
         }));
+      } else if (co.ats === "ashby") {
+        const data = await fetchJSON(
+          `https://api.ashbyhq.com/posting-api/job-board/${co.slug}`
+        );
+        jobs = (data?.jobs || []).map((j) => ({
+          title: j.title?.trim(),
+          company: co.name,
+          location: j.isRemote ? "Remote" : (j.location || "Unknown"),
+          url: j.jobUrl || j.applyUrl,
+          posted: j.publishedAt?.slice(0, 10),
+          source: `${co.name} (Ashby)`,
+        }));
       }
 
       return jobs.filter((j) => {
@@ -302,7 +327,7 @@ server.tool(
     }
 
     let out = `## Finance Native Job Board Results\n`;
-    out += `Searched **${FINANCE_ATS_COMPANIES.length} company career pages** directly via Greenhouse & Lever.\n`;
+    out += `Searched **${FINANCE_ATS_COMPANIES.length} company career pages** directly via Greenhouse, Lever & Ashby.\n`;
     out += `Found **${jobs.length} finance roles**${internship_only ? " (internships/co-ops only)" : ""}${query ? ` matching "${query}"` : ""}.\n\n`;
 
     for (const [source, list] of Object.entries(grouped)) {
