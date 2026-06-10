@@ -1,0 +1,13 @@
+{
+  "name": "job-search-mcp",
+  "version": "1.0.0",
+  "description": "MCP server aggregating free job boards: Remotive, RemoteOK, The Muse, Arbeitnow, Himalayas, Jobicy",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  }
+}
