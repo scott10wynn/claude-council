@@ -164,6 +164,7 @@ After the formatted output, generate synthesis analyzing the provider responses:
 2. **Divergence**: Where they disagree and why
 3. **Unique insights**: Notable points from each provider
 4. **Recommendation**: Strongest approach for the situation
+5. **Verify before using** *(include only if applicable)*: List specific version numbers, API method names, config keys, or statistics where providers gave different values, or where a single provider stated a very specific value with no corroboration. Format as a short bulleted checklist. Omit this section entirely if no such claims exist.
 
 ### If Debate Mode Was Used
 

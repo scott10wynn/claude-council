@@ -25,6 +25,18 @@ Synthesis format: three bullets max per section (Consensus / Divergence / Recomm
 Skip the Divergence section entirely when providers agree.
 Skip auto-context when the question has no code references.
 
+## Hallucination Prevention
+
+Never state a version number, API method signature, configuration key, or specific statistic as fact unless you have seen it in the actual codebase or the user just provided it. If uncertain, say "verify in the docs" or "as of my training data" — don't present it as current ground truth.
+
+When generating code that calls external APIs or uses third-party libraries: note "verify the current API" if you haven't seen the library imported/used in the project files.
+
+Don't fabricate error messages, stack traces, or command output. If you need to show an example, label it clearly as "example output" or "approximate".
+
+When a council synthesis contains specific technical claims (version numbers, API names, config values) that providers disagreed on, flag them in a "Verify these" list rather than picking one silently.
+
+If a user asks you to confirm something you're not certain about: say "I'm not certain — check the official docs" instead of guessing confidently.
+
 ## Context Inclusion
 
 For questions about a single function, include that file only — not the whole module.
