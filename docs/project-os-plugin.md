@@ -135,6 +135,7 @@ CREATE INDEX idx_assumptions_status  ON assumptions(status);
 -- Scheduled reminders
 CREATE TABLE reminders (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID NOT NULL REFERENCES users(id),
     node_id     UUID REFERENCES nodes(id),
     message     TEXT NOT NULL,
     due_at      TIMESTAMPTZ NOT NULL,
@@ -333,10 +334,10 @@ async def recall(query: str, project_id: str | None = None,
     return await memory.retrieve(query=query, project_id=project_id, limit=limit)
 
 @mcp.tool()
-async def add_node(type: str, title: str, body: str = "",
+async def add_node(type: str, title: str, owner_id: str, body: str = "",
                    metadata: dict | None = None) -> dict:
     """Add a node (project, goal, task, person, decision) to the knowledge graph."""
-    node = await graph.create_node(type=type, title=title,
+    node = await graph.create_node(type=type, title=title, owner_id=owner_id,
                                    body=body, metadata=metadata or {})
     await memory.store(f"Created {type}: {title}", content_type="observation",
                        importance=0.7)
@@ -352,14 +353,19 @@ async def add_edge(from_id: str, to_id: str, rel_type: str,
 async def flag_assumption(statement: str, project_id: str,
                            confidence: float = 0.8) -> dict:
     """Log an assumption and check it against existing ones for contradictions."""
-    contradictions = await memory.detect_contradictions(statement, project_id)
-    assumption_id = await db.create_assumption(
+    contradictions  = await memory.detect_contradictions(statement, project_id)
+    assumption_id   = await db.create_assumption(
         statement=statement, project_id=project_id, confidence=confidence
     )
+    embedding = await memory._embed(statement)
+    await db.upsert_assumption_in_qdrant(
+        assumption_id=assumption_id, project_id=project_id,
+        statement=statement, confidence=confidence, embedding=embedding
+    )
     return {
-        "assumption_id": assumption_id,
+        "assumption_id":       assumption_id,
         "contradictions_found": len(contradictions),
-        "contradictions": [c.payload for c in contradictions]
+        "contradictions":      [c.payload for c in contradictions]
     }
 
 @mcp.tool()
@@ -378,24 +384,28 @@ async def suggest_next_steps(project_id: str) -> list[str]:
 async def sync_github(repo: str, project_id: str, user_id: str) -> dict:
     """Pull issues, PRs, and commits from a GitHub repo into the project graph."""
     cred_ref = await db.get_integration_credential(user_id=user_id, provider="github")
-    token    = credential_store.resolve(cred_ref, user_id)
-    return await integrations.github.sync(repo=repo, project_id=project_id, token=token)
+    token    = await credential_store.resolve(cred_ref, user_id)
+    return await integrations.github.sync(repo=repo, project_id=project_id,
+                                          token=token, user_id=user_id)
 
 @mcp.tool()
 async def sync_notion(page_id: str, project_id: str, user_id: str) -> dict:
     """Sync a Notion page/database into the project graph."""
     cred_ref = await db.get_integration_credential(user_id=user_id, provider="notion")
-    token    = credential_store.resolve(cred_ref, user_id)
-    return await integrations.notion.sync(page_id=page_id, project_id=project_id, token=token)
+    token    = await credential_store.resolve(cred_ref, user_id)
+    return await integrations.notion.sync(page_id=page_id, project_id=project_id,
+                                          token=token, user_id=user_id)
 ```
 
 ### Memory Engine Core
 
 ```python
 # app/memory.py
+import os
 import openai
 import uuid, math
 from datetime import datetime, timezone
+from anthropic import AsyncAnthropic
 from qdrant_client import AsyncQdrantClient  # async client — no event-loop blocking
 from qdrant_client.models import PointStruct, Filter, FieldCondition, MatchValue
 from app.db import db
@@ -404,7 +414,11 @@ _openai = openai.AsyncOpenAI()  # module-level; import once, not per call
 
 class MemoryEngine:
     def __init__(self):
-        self._qdrant = AsyncQdrantClient(host="localhost", port=6333)
+        self._qdrant = AsyncQdrantClient(
+            host=os.environ.get("QDRANT_HOST", "localhost"),
+            port=int(os.environ.get("QDRANT_PORT", "6333"))
+        )
+        self._anthropic = AsyncAnthropic()  # class-level; one client for all contradiction checks
 
     async def store(self, content: str, content_type: str,
                     project_id: str | None, importance: float) -> str:
@@ -487,9 +501,7 @@ class MemoryEngine:
 
     async def _is_contradiction(self, stmt_a: str, stmt_b: str) -> bool:
         """NLI via Claude Haiku — cheap and fast for binary classification."""
-        from anthropic import AsyncAnthropic
-        client = AsyncAnthropic()
-        response = await client.messages.create(
+        response = await self._anthropic.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=5,
             system="Reply YES or NO only. No punctuation.",
@@ -607,7 +619,7 @@ class GitHubIntegration:
         self._graph  = graph   # injected — no fresh pool per call
         self._memory = memory
 
-    async def sync(self, repo: str, project_id: str, token: str) -> dict:
+    async def sync(self, repo: str, project_id: str, token: str, user_id: str) -> dict:
         g = Github(token)  # token resolved by the MCP tool layer, not here
         r = g.get_repo(repo)
 
@@ -623,6 +635,7 @@ class GitHubIntegration:
                 type="task",
                 title=issue.title,
                 body=issue.body or "",
+                owner_id=user_id,
                 metadata={
                     "source": "github",
                     "github_number": issue.number,
@@ -659,7 +672,7 @@ class NotionIntegration:
         self._graph  = graph   # injected — consistent with IntegrationRouter
         self._memory = memory
 
-    async def sync(self, page_id: str, project_id: str, token: str) -> dict:
+    async def sync(self, page_id: str, project_id: str, token: str, user_id: str) -> dict:
         notion = NotionClient(auth=token)  # token resolved by the MCP tool layer
         page = notion.pages.retrieve(page_id=page_id)
         blocks = notion.blocks.children.list(block_id=page_id)
@@ -677,10 +690,91 @@ class NotionIntegration:
         tasks = self._extract_tasks(content)
         for task_text in tasks:
             await self._graph.create_node(type="task", title=task_text,
+                                          owner_id=user_id,
                                           metadata={"source": "notion",
                                                     "notion_page_id": page_id})
 
         return {"page_synced": True, "tasks_found": len(tasks)}
+
+    def _blocks_to_text(self, blocks: list) -> str:
+
+        """Flatten Notion block list to plain text."""
+        lines = []
+        for block in blocks:
+            btype = block.get("type", "")
+            rich  = block.get(btype, {}).get("rich_text", [])
+            text  = "".join(r.get("plain_text", "") for r in rich)
+            if text:
+                lines.append(text)
+        return "\n".join(lines)
+
+    def _extract_tasks(self, text: str) -> list[str]:
+        """Return TODO/checkbox lines as plain task strings."""
+        tasks = []
+        for line in text.splitlines():
+            s = line.strip()
+            if s.startswith(("[ ]", "- [ ]", "TODO:", "todo:")):
+                task = (s.lstrip("- ").lstrip("[ ]")
+                         .lstrip("TODO:").lstrip("todo:").strip())
+                if task:
+                    tasks.append(task)
+        return tasks
+```
+
+### Google Drive Integration (stub)
+
+```python
+# app/integrations/gdrive.py
+from app.graph import GraphEngine
+from app.memory import MemoryEngine
+
+class GoogleDriveIntegration:
+    def __init__(self, graph: GraphEngine, memory: MemoryEngine):
+        self._graph  = graph
+        self._memory = memory
+
+    async def sync(self, file_id: str, project_id: str,
+                   token: str, user_id: str) -> dict:
+        """Pull a Drive doc/sheet into memory. Full implementation requires
+        google-api-python-client + google-auth-oauthlib OAuth flow."""
+        raise NotImplementedError("Google Drive sync not yet implemented")
+```
+
+### Gmail Integration (stub)
+
+```python
+# app/integrations/gmail.py
+from app.graph import GraphEngine
+from app.memory import MemoryEngine
+
+class GmailIntegration:
+    def __init__(self, graph: GraphEngine, memory: MemoryEngine):
+        self._graph  = graph
+        self._memory = memory
+
+    async def sync(self, query: str, project_id: str,
+                   token: str, user_id: str) -> dict:
+        """Search Gmail and store matching threads as memories.
+        Requires Gmail API OAuth scope."""
+        raise NotImplementedError("Gmail sync not yet implemented")
+```
+
+### Excel Integration (stub)
+
+```python
+# app/integrations/excel.py
+from app.graph import GraphEngine
+from app.memory import MemoryEngine
+
+class ExcelIntegration:
+    def __init__(self, graph: GraphEngine, memory: MemoryEngine):
+        self._graph  = graph
+        self._memory = memory
+
+    async def sync(self, file_path: str, project_id: str,
+                   token: str, user_id: str) -> dict:
+        """Parse an Excel/CSV file with openpyxl and store rows as memories."""
+        raise NotImplementedError("Excel sync not yet implemented")
 ```
 
 ---
@@ -808,22 +902,22 @@ class CredentialStore:
         self.kms = boto3.client("kms")
         self._key_id = os.environ["KMS_KEY_ID"]
 
-    def store(self, user_id: str, provider: str, token: str) -> str:
+    async def store(self, user_id: str, provider: str, token: str) -> str:
         """Encrypt and store; return opaque reference ID."""
         encrypted = self.kms.encrypt(
             KeyId=self._key_id,
             Plaintext=token.encode()
         )["CiphertextBlob"]
         ref_id = str(uuid.uuid4())
-        db.credentials.insert(id=ref_id, user_id=user_id,
-                               provider=provider, encrypted_token=encrypted)
+        await db.credentials.insert(id=ref_id, user_id=user_id,
+                                     provider=provider, encrypted_token=encrypted)
         return ref_id
 
-    def resolve(self, ref_id: str, user_id: str) -> str:
+    async def resolve(self, ref_id: str, user_id: str) -> str:
         """Decrypt only at point of use; result never persisted."""
-        row = db.credentials.get(id=ref_id, user_id=user_id)  # enforces ownership
+        row = await db.credentials.get(id=ref_id, user_id=user_id)
         return self.kms.decrypt(
-            CiphertextBlob=row.encrypted_token
+            CiphertextBlob=row["encrypted_token"]
         )["Plaintext"].decode()
 ```
 
@@ -1035,6 +1129,19 @@ async def _get_pool() -> asyncpg.Pool:
         )
     return _pool
 
+_qdrant_client = None  # AsyncQdrantClient | None
+
+async def _get_qdrant():
+    """Shared Qdrant client — created once, reused for all calls."""
+    global _qdrant_client
+    if _qdrant_client is None:
+        from qdrant_client import AsyncQdrantClient
+        _qdrant_client = AsyncQdrantClient(
+            host=os.environ.get("QDRANT_HOST", "localhost"),
+            port=int(os.environ.get("QDRANT_PORT", "6333"))
+        )
+    return _qdrant_client
+
 class _MemoriesTable:
     async def insert(self, *, id: str, content: str, content_type: str,
                      embedding_id: str, importance: float,
@@ -1074,6 +1181,9 @@ class _DB:
     memories    = _MemoriesTable()
     credentials = _CredentialsTable()
 
+    # Exposed so scheduler.py and CLI can access the pool without importing _get_pool
+    _get_pool_directly = staticmethod(_get_pool)
+
     async def create_assumption(self, *, statement: str, project_id: str,
                                  confidence: float) -> str:
         pool = await _get_pool()
@@ -1089,10 +1199,9 @@ class _DB:
                                            confidence: float,
                                            embedding: list[float]) -> None:
         """Keep the assumptions Qdrant collection in sync after each INSERT."""
-        from qdrant_client import AsyncQdrantClient
         from qdrant_client.models import PointStruct
         from datetime import datetime, timezone
-        qdrant = AsyncQdrantClient(host="localhost", port=6333)
+        qdrant = await _get_qdrant()
         await qdrant.upsert("assumptions", points=[
             PointStruct(
                 id=assumption_id,
@@ -1137,37 +1246,13 @@ class _DB:
 db = _DB()
 ```
 
-### Wiring `flag_assumption` to keep Qdrant in sync
-
-Update `flag_assumption` in `server.py` to also embed and upsert the new assumption
-so `detect_contradictions` can find it on the next call:
-
-```python
-@mcp.tool()
-async def flag_assumption(statement: str, project_id: str,
-                           confidence: float = 0.8) -> dict:
-    contradictions  = await memory.detect_contradictions(statement, project_id)
-    assumption_id   = await db.create_assumption(
-        statement=statement, project_id=project_id, confidence=confidence
-    )
-    embedding = await memory._embed(statement)
-    await db.upsert_assumption_in_qdrant(
-        assumption_id=assumption_id, project_id=project_id,
-        statement=statement, confidence=confidence, embedding=embedding
-    )
-    return {
-        "assumption_id":       assumption_id,
-        "contradictions_found": len(contradictions),
-        "contradictions":      [c.payload for c in contradictions]
-    }
-```
-
 ---
 
 ## 15. Graph Engine (app/graph.py)
 
 ```python
 # app/graph.py
+import asyncio
 import uuid
 from app.db import _get_pool
 
@@ -1263,9 +1348,6 @@ class GraphEngine:
         )
         return {r["num"] for r in rows}
 ```
-
-> **Note:** `asyncio` must be imported at the top of `graph.py`
-> (`import asyncio`) — omitted above for brevity.
 
 ---
 
@@ -1511,6 +1593,180 @@ CREATE TABLE credentials (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(user_id, provider)
 );
+```
+
+---
+
+## 18. Scheduler (app/scheduler.py)
+
+APScheduler runs inside the MCP server process and fires the weekly briefing
+plus due-reminder delivery.
+
+```python
+# app/scheduler.py
+import asyncio
+import logging
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+from app.db import db
+from app import intelligence
+
+log = logging.getLogger(__name__)
+
+scheduler = AsyncIOScheduler()
+
+@scheduler.scheduled_job(CronTrigger(day_of_week="mon", hour=8, minute=0))
+async def weekly_briefing() -> None:
+    """Every Monday 08:00 — summarize all active projects and log drift."""
+    pool = await db._get_pool_directly()  # internal helper; see db.py
+    rows = await pool.fetch(
+        "SELECT id, title FROM nodes WHERE type = 'project' AND status = 'active'"
+    )
+    for row in rows:
+        try:
+            from app.graph import GraphEngine
+            ctx = await GraphEngine().build_project_context(str(row["id"]))
+            summary = await intelligence.summarize_project(ctx)
+            drift   = await intelligence.detect_project_drift(
+                ctx, [g["title"] for g in ctx.get("goals", [])]
+            )
+            log.info("Briefing [%s]: %s | drift=%s", row["title"], summary,
+                     drift.get("severity", "none"))
+        except Exception:
+            log.exception("Briefing failed for project %s", row["id"])
+
+@scheduler.scheduled_job("interval", minutes=5)
+async def deliver_due_reminders() -> None:
+    """Poll for reminders due in the past 5 minutes and log them."""
+    pool = await db._get_pool_directly()
+    rows = await pool.fetch(
+        """UPDATE reminders SET delivered = TRUE
+           WHERE due_at <= NOW() AND delivered = FALSE
+           RETURNING id, message, user_id"""
+    )
+    for r in rows:
+        log.info("Reminder delivered to user %s: %s", r["user_id"], r["message"])
+
+def start() -> None:
+    scheduler.start()
+
+def stop() -> None:
+    scheduler.shutdown(wait=False)
+```
+
+> Wire `scheduler.start()` / `scheduler.stop()` in `server.py` startup/shutdown
+> lifecycle hooks so APScheduler runs alongside the MCP server event loop.
+
+---
+
+## 19. CLI (cli/project_os.py)
+
+```python
+# cli/project_os.py
+import asyncio
+import json
+import click
+
+def _run(coro):
+    return asyncio.get_event_loop().run_until_complete(coro)
+
+@click.group()
+def cli():
+    """Project OS — command-line interface."""
+
+@cli.command()
+@click.argument("query")
+@click.option("--project", "-p", default=None, help="Scope to a project ID")
+@click.option("--limit", "-n", default=5, show_default=True)
+def recall(query: str, project: str | None, limit: int):
+    """Semantic search over long-term memory."""
+    from app.memory import MemoryEngine
+    results = _run(MemoryEngine().retrieve(query=query, project_id=project, limit=limit))
+    for r in results:
+        click.echo(f"[{r['_score']:.3f}] {r['content']}")
+
+@cli.command()
+@click.argument("statement")
+@click.option("--project", "-p", required=True, help="Project ID")
+@click.option("--confidence", "-c", default=0.8, show_default=True)
+def decide(statement: str, project: str, confidence: float):
+    """Log a decision and check for contradictions."""
+    from app.db import db
+    from app.memory import MemoryEngine
+    mem = MemoryEngine()
+
+    async def _decide():
+        contradictions = await mem.detect_contradictions(statement, project)
+        assumption_id  = await db.create_assumption(
+            statement=statement, project_id=project, confidence=confidence
+        )
+        embedding = await mem._embed(statement)
+        await db.upsert_assumption_in_qdrant(
+            assumption_id=assumption_id, project_id=project,
+            statement=statement, confidence=confidence, embedding=embedding
+        )
+        return assumption_id, contradictions
+
+    aid, contradictions = _run(_decide())
+    click.echo(f"Logged assumption {aid}")
+    if contradictions:
+        click.echo(f"⚠  {len(contradictions)} contradiction(s) detected:")
+        for c in contradictions:
+            click.echo(f"   - {c.payload['statement']}")
+
+@cli.command()
+def briefing():
+    """Print a summary of all active projects."""
+    from app.graph import GraphEngine
+    from app.db import db
+    from app import intelligence
+
+    async def _briefing():
+        import asyncpg, os
+        pool = await db._get_pool_directly()
+        rows = await pool.fetch(
+            "SELECT id, title FROM nodes WHERE type = 'project' AND status = 'active'"
+        )
+        graph = GraphEngine()
+        for row in rows:
+            ctx     = await graph.build_project_context(str(row["id"]))
+            summary = await intelligence.summarize_project(ctx)
+            click.echo(f"\n## {row['title']}")
+            click.echo(summary)
+            click.echo(f"  Open tasks: {len(ctx['open_tasks'])}")
+
+    _run(_briefing())
+
+@cli.command()
+@click.option("--all", "sync_all", is_flag=True, default=False)
+@click.option("--repo", default=None, help="GitHub repo (owner/name)")
+@click.option("--project", "-p", required=True, help="Project ID")
+@click.option("--user-id", "-u", required=True, help="User ID")
+def sync(sync_all: bool, repo: str | None, project: str, user_id: str):
+    """Sync connected integrations into the project graph."""
+    from app.integrations import IntegrationRouter
+    from app.graph import GraphEngine
+    from app.memory import MemoryEngine
+    from app.db import db
+    from app.security.credentials import CredentialStore
+
+    router = IntegrationRouter(graph=GraphEngine(), memory=MemoryEngine())
+    creds  = CredentialStore()
+
+    async def _sync():
+        if repo or sync_all:
+            cred_ref = await db.get_integration_credential(user_id=user_id,
+                                                            provider="github")
+            if cred_ref:
+                token = await creds.resolve(cred_ref, user_id)
+                result = await router.github.sync(repo=repo, project_id=project,
+                                                  token=token, user_id=user_id)
+                click.echo(f"GitHub: {result}")
+
+    _run(_sync())
+
+if __name__ == "__main__":
+    cli()
 ```
 
 ---
