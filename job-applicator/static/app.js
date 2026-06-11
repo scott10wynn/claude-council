@@ -166,9 +166,9 @@ async function saveApplication() {
 async function loadApplications() {
   const filter = document.getElementById('status-filter').value;
   const res = await fetch('/api/applications');
-  let apps = await res.json();
-  if (filter) apps = apps.filter(a => a.status === filter);
-  updateBadge(apps.length);
+  const allApps = await res.json();
+  updateBadge(allApps.length);
+  let apps = filter ? allApps.filter(a => a.status === filter) : allApps;
 
   const list = document.getElementById('apps-list');
   if (!apps.length) {

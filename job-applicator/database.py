@@ -1,8 +1,9 @@
+import os
 import sqlite3
-import json
 from datetime import datetime
 
-DB_PATH = "data/applications.db"
+_BASE = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(_BASE, "data", "applications.db")
 
 
 def get_db():
@@ -12,8 +13,7 @@ def get_db():
 
 
 def init_db():
-    import os
-    os.makedirs("data", exist_ok=True)
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = get_db()
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS applications (

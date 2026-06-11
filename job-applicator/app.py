@@ -20,11 +20,14 @@ from form_filler import open_and_fill_form
 app = Flask(__name__, static_folder="static")
 CORS(app)
 
-UPLOAD_FOLDER = "uploads"
+_BASE = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_FOLDER = os.path.join(_BASE, "uploads")
 ALLOWED_EXTENSIONS = {"pdf"}
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10MB
+
+init_db()
 
 
 def allowed_file(filename):
@@ -63,6 +66,33 @@ def api_upload_resume():
 
     resume_text = extract_text_from_pdf(filepath)
     return jsonify({"resume_text": resume_text, "filename": filename})
+
+
+@app.route("/api/set-env", methods=["POST"])
+def api_set_env():
+    data = request.json or {}
+    env_path = os.path.join(_BASE, ".env")
+    # Read existing lines, replacing any matching keys
+    lines = []
+    keys_written = set()
+    if os.path.exists(env_path):
+        with open(env_path) as f:
+            for line in f:
+                key = line.split("=", 1)[0].strip()
+                if key in data:
+                    lines.append(f"{key}={data[key]}\n")
+                    keys_written.add(key)
+                else:
+                    lines.append(line)
+    for key, value in data.items():
+        if key not in keys_written:
+            lines.append(f"{key}={value}\n")
+    with open(env_path, "w") as f:
+        f.writelines(lines)
+    # Apply immediately to running process
+    for key, value in data.items():
+        os.environ[key] = value
+    return jsonify({"success": True})
 
 
 @app.route("/api/profile", methods=["POST"])
@@ -155,17 +185,18 @@ def api_send_email(app_id):
     if not app_data:
         return jsonify({"error": "Application not found"}), 404
 
+    profile = profile or {}
     result = send_application_email(
         smtp_host=data["smtp_host"],
         smtp_port=int(data.get("smtp_port", 587)),
         smtp_user=data["smtp_user"],
         smtp_password=data["smtp_password"],
-        from_email=profile.get("email", data["smtp_user"]),
+        from_email=profile.get("email") or data["smtp_user"],
         to_email=data["to_email"],
         applicant_name=profile.get("name", ""),
         job_title=app_data["job_title"],
         company=app_data["company"],
-        cover_letter=app_data["cover_letter"],
+        cover_letter=app_data.get("cover_letter") or "",
         use_tls=data.get("use_tls", True),
     )
 

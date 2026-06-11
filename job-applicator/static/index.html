@@ -44,7 +44,7 @@
           <input type="file" id="resume-file" accept=".pdf" hidden>
           <div class="upload-prompt" id="upload-prompt">
             <span class="upload-icon">📄</span>
-            <p>Drop your PDF here or <button class="link-btn" onclick="document.getElementById('resume-file').click()">browse</button></p>
+            <p>Drop your PDF here or <button class="link-btn" onclick="event.stopPropagation(); document.getElementById('resume-file').click()">browse</button></p>
             <p class="hint" id="resume-filename">No file selected</p>
           </div>
         </div>
