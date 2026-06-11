@@ -59,6 +59,14 @@ intelligence across every conversation.
 ### PostgreSQL — Relational + Graph
 
 ```sql
+-- Users must be created first; nodes and integrations FK reference it
+CREATE TABLE users (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email           TEXT UNIQUE NOT NULL,
+    settings        JSONB DEFAULT '{}',
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Core entity table (all node types share this)
 CREATE TABLE nodes (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -66,7 +74,7 @@ CREATE TABLE nodes (
     title       TEXT NOT NULL,
     body        TEXT,
     status      TEXT DEFAULT 'active',  -- active|archived|completed|contradicted
-    owner_id    UUID,                   -- user who created it
+    owner_id    UUID NOT NULL REFERENCES users(id),  -- user who created it
     metadata    JSONB DEFAULT '{}',
     created_at  TIMESTAMPTZ DEFAULT NOW(),
     updated_at  TIMESTAMPTZ DEFAULT NOW()
@@ -111,6 +119,7 @@ CREATE INDEX idx_memories_type     ON memories(content_type);
 CREATE TABLE assumptions (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     node_id         UUID REFERENCES nodes(id),
+    project_id      UUID NOT NULL REFERENCES nodes(id),  -- scopes assumption to a project
     statement       TEXT NOT NULL,
     confidence      FLOAT DEFAULT 0.8,
     status          TEXT DEFAULT 'active',  -- active|confirmed|contradicted|superseded
@@ -119,6 +128,9 @@ CREATE TABLE assumptions (
     created_at      TIMESTAMPTZ DEFAULT NOW(),
     resolved_at     TIMESTAMPTZ
 );
+
+CREATE INDEX idx_assumptions_project ON assumptions(project_id);
+CREATE INDEX idx_assumptions_status  ON assumptions(status);
 
 -- Scheduled reminders
 CREATE TABLE reminders (
@@ -134,22 +146,16 @@ CREATE TABLE reminders (
 -- Integration sync state
 CREATE TABLE integrations (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         UUID NOT NULL REFERENCES users(id),
     provider        TEXT NOT NULL,  -- notion|github|gdrive|gmail|excel
     resource_id     TEXT NOT NULL,  -- external ID (page ID, repo, file ID)
     node_id         UUID REFERENCES nodes(id),
     last_synced_at  TIMESTAMPTZ,
     sync_cursor     TEXT,           -- pagination token / last-modified etag
     credentials     TEXT,           -- encrypted OAuth token reference
-    UNIQUE(provider, resource_id)
+    UNIQUE(user_id, provider, resource_id)  -- per-user; multiple users can sync the same resource
 );
 
--- Per-user config + encrypted credential refs
-CREATE TABLE users (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email           TEXT UNIQUE NOT NULL,
-    settings        JSONB DEFAULT '{}',
-    created_at      TIMESTAMPTZ DEFAULT NOW()
-);
 ```
 
 ### Qdrant — Vector Collections
@@ -176,6 +182,19 @@ CREATE TABLE users (
         "type":     "keyword",
         "title":    "keyword",
         "status":   "keyword"
+    }
+}
+
+# Collection: "assumptions"  (for contradiction detection)
+{
+    "vectors": {"size": 1536, "distance": "Cosine"},
+    "payload_schema": {
+        "assumption_id": "keyword",
+        "project_id":    "keyword",
+        "statement":     "keyword",
+        "status":        "keyword",   # active|confirmed|contradicted|superseded
+        "confidence":    "float",
+        "created_at":    "datetime"
     }
 }
 ```
@@ -254,12 +273,16 @@ assumptions. A contradiction is flagged when:
   classifier runs.
 
 ```python
-async def detect_contradictions(new_statement: str, project_id: str):
-    embedding = await embed(new_statement)
-    candidates = await qdrant.search(
-        collection="assumptions",
-        vector=embedding,
-        filter={"project_id": project_id, "status": "active"},
+# Method on MemoryEngine (not a standalone function) so memory.detect_contradictions() works
+async def detect_contradictions(self, new_statement: str, project_id: str):
+    embedding = await self._embed(new_statement)
+    candidates = await self._qdrant.search(
+        collection_name="assumptions",  # matches the Qdrant collection defined above
+        query_vector=embedding,
+        query_filter=Filter(must=[
+            FieldCondition(key="project_id", match=MatchValue(value=project_id)),
+            FieldCondition(key="status",     match=MatchValue(value="active")),
+        ]),
         limit=10
     )
     contradictions = []
@@ -284,11 +307,12 @@ from app.db import db
 from app.memory import MemoryEngine
 from app.graph import GraphEngine
 from app.integrations import IntegrationRouter
+from app import intelligence
 
 mcp = FastMCP("project-os")
-memory = MemoryEngine()
-graph  = GraphEngine()
-integrations = IntegrationRouter()
+memory       = MemoryEngine()
+graph        = GraphEngine()
+integrations = IntegrationRouter(graph=graph, memory=memory)  # shared instances
 
 @mcp.tool()
 async def remember(content: str, content_type: str = "observation",
@@ -310,19 +334,19 @@ async def recall(query: str, project_id: str | None = None,
 
 @mcp.tool()
 async def add_node(type: str, title: str, body: str = "",
-                   metadata: dict = {}) -> dict:
+                   metadata: dict | None = None) -> dict:
     """Add a node (project, goal, task, person, decision) to the knowledge graph."""
     node = await graph.create_node(type=type, title=title,
-                                   body=body, metadata=metadata)
+                                   body=body, metadata=metadata or {})
     await memory.store(f"Created {type}: {title}", content_type="observation",
                        importance=0.7)
     return node
 
 @mcp.tool()
 async def add_edge(from_id: str, to_id: str, rel_type: str,
-                   metadata: dict = {}) -> dict:
+                   metadata: dict | None = None) -> dict:
     """Connect two nodes with a typed relationship."""
-    return await graph.create_edge(from_id, to_id, rel_type, metadata)
+    return await graph.create_edge(from_id, to_id, rel_type, metadata or {})
 
 @mcp.tool()
 async def flag_assumption(statement: str, project_id: str,
@@ -365,23 +389,25 @@ async def sync_notion(page_id: str, project_id: str) -> dict:
 
 ```python
 # app/memory.py
-import anthropic
-from qdrant_client import QdrantClient
-from qdrant_client.models import PointStruct, Filter, FieldCondition, MatchValue
+import openai
 import uuid, math
 from datetime import datetime, timezone
+from qdrant_client import AsyncQdrantClient  # async client — no event-loop blocking
+from qdrant_client.models import PointStruct, Filter, FieldCondition, MatchValue
+from app.db import db
 
-client = anthropic.Anthropic()
-qdrant = QdrantClient(host="localhost", port=6333)
+_openai = openai.AsyncOpenAI()  # module-level; import once, not per call
 
 class MemoryEngine:
+    def __init__(self):
+        self._qdrant = AsyncQdrantClient(host="localhost", port=6333)
+
     async def store(self, content: str, content_type: str,
                     project_id: str | None, importance: float) -> str:
         embedding = await self._embed(content)
         memory_id = str(uuid.uuid4())
 
-        # Store vector
-        qdrant.upsert("memories", points=[
+        await self._qdrant.upsert("memories", points=[
             PointStruct(
                 id=memory_id,
                 vector=embedding,
@@ -395,7 +421,6 @@ class MemoryEngine:
             )
         ])
 
-        # Store in Postgres for relational queries
         await db.memories.insert(id=memory_id, content=content,
                                   content_type=content_type,
                                   embedding_id=memory_id,
@@ -411,10 +436,10 @@ class MemoryEngine:
                 key="project_id", match=MatchValue(value=project_id)
             ))
 
-        results = qdrant.search(
+        results = await self._qdrant.search(
             collection_name="memories",
             query_vector=embedding,
-            query_filter=Filter(must=filters) if filters else None,
+            query_filter=Filter(must=filters),  # empty must == no filter
             limit=limit * 2  # oversample before re-ranking
         )
 
@@ -423,20 +448,38 @@ class MemoryEngine:
         for r in results:
             created = datetime.fromisoformat(r.payload["created_at"])
             days_ago = (now - created).days
-            recency = math.exp(-0.1 * days_ago)
+            recency   = math.exp(-0.1 * days_ago)
+            # matches the 4-term spec formula (section 3)
             score = (0.45 * r.score +
                      0.25 * recency +
-                     0.30 * r.payload["importance"])
+                     0.20 * r.payload["importance"] +
+                     0.10 * (1 / (1 + r.payload.get("hops_to_project", 99))))
             scored.append({**r.payload, "_score": score, "id": r.id})
 
         scored.sort(key=lambda x: x["_score"], reverse=True)
         return scored[:limit]
 
+    async def detect_contradictions(self, new_statement: str, project_id: str) -> list:
+        embedding = await self._embed(new_statement)
+        candidates = await self._qdrant.search(
+            collection_name="assumptions",
+            query_vector=embedding,
+            query_filter=Filter(must=[
+                FieldCondition(key="project_id", match=MatchValue(value=project_id)),
+                FieldCondition(key="status",     match=MatchValue(value="active")),
+            ]),
+            limit=10
+        )
+        contradictions = []
+        for c in candidates:
+            if c.score > 0.82:
+                polarity = classifier.predict([new_statement, c.payload["statement"]])
+                if polarity == "contradiction":
+                    contradictions.append(c)
+        return contradictions
+
     async def _embed(self, text: str) -> list[float]:
-        # Use Claude's recommended embedding provider
-        # (swap for openai, cohere, or voyage as preferred)
-        import openai
-        resp = openai.embeddings.create(model="text-embedding-3-small", input=text)
+        resp = await _openai.embeddings.create(model="text-embedding-3-small", input=text)
         return resp.data[0].embedding
 ```
 
@@ -446,26 +489,32 @@ class MemoryEngine:
 # app/intelligence.py
 import anthropic, json
 
-client = anthropic.Anthropic()
+client = anthropic.AsyncAnthropic()  # async client — non-blocking in async context
 
 async def suggest_next_steps(context: dict) -> list[str]:
     prompt = f"""You are a project intelligence engine. Given the following
 project context, suggest the 3-5 most important next steps. Be specific and
-actionable. Return JSON array of strings.
+actionable. Return a JSON array of strings with no additional text.
 
 Context:
 {json.dumps(context, indent=2)}"""
 
-    response = client.messages.create(
+    response = await client.messages.create(
         model="claude-opus-4-7",
         max_tokens=1024,
         messages=[{"role": "user", "content": prompt}]
     )
-    return json.loads(response.content[0].text)
+    try:
+        return json.loads(response.content[0].text)
+    except json.JSONDecodeError:
+        # Claude occasionally wraps JSON in prose; extract the array
+        text = response.content[0].text
+        start, end = text.index("["), text.rindex("]") + 1
+        return json.loads(text[start:end])
 
 async def summarize_project(context: dict) -> str:
     """Generate an executive summary of project state."""
-    response = client.messages.create(
+    response = await client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=512,
         system="You are a crisp executive summarizer. 3-4 sentences max.",
@@ -477,17 +526,22 @@ async def detect_project_drift(context: dict, original_goals: list[str]) -> dict
     """Compare current work against original goals to detect scope/direction drift."""
     prompt = f"""Compare these original goals against the current project state.
 Identify any drift, scope creep, or forgotten objectives.
-Return JSON: {{"drift_detected": bool, "issues": [str], "severity": "low|medium|high"}}
+Return JSON only: {{"drift_detected": bool, "issues": [str], "severity": "low|medium|high"}}
 
 Original goals: {original_goals}
 Current state: {json.dumps(context)}"""
 
-    response = client.messages.create(
+    response = await client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=512,
         messages=[{"role": "user", "content": prompt}]
     )
-    return json.loads(response.content[0].text)
+    try:
+        return json.loads(response.content[0].text)
+    except json.JSONDecodeError:
+        text = response.content[0].text
+        start, end = text.index("{"), text.rindex("}") + 1
+        return json.loads(text[start:end])
 ```
 
 ---
@@ -503,34 +557,52 @@ from .notion   import NotionIntegration
 from .gdrive   import GoogleDriveIntegration
 from .gmail    import GmailIntegration
 from .excel    import ExcelIntegration
+from app.graph  import GraphEngine
+from app.memory import MemoryEngine
 
 class IntegrationRouter:
-    def __init__(self):
-        self.github = GitHubIntegration()
-        self.notion = NotionIntegration()
-        self.gdrive = GoogleDriveIntegration()
-        self.gmail  = GmailIntegration()
-        self.excel  = ExcelIntegration()
+    def __init__(self, graph: GraphEngine, memory: MemoryEngine):
+        # shared instances — avoid creating a new DB pool per sync call
+        self.github = GitHubIntegration(graph, memory)
+        self.notion = NotionIntegration(graph, memory)
+        self.gdrive = GoogleDriveIntegration(graph, memory)
+        self.gmail  = GmailIntegration(graph, memory)
+        self.excel  = ExcelIntegration(graph, memory)
 ```
 
 ### GitHub Integration
 
 ```python
 # app/integrations/github.py
+import itertools
 from github import Github  # PyGithub
 from app.graph import GraphEngine
+from app.memory import MemoryEngine
+
+MAX_ISSUES  = 200  # cap to avoid fetching unbounded backlogs
+MAX_COMMITS = 20
 
 class GitHubIntegration:
+    def __init__(self, graph: GraphEngine, memory: MemoryEngine):
+        self._graph  = graph   # injected — no fresh pool per call
+        self._memory = memory
+
     async def sync(self, repo: str, project_id: str) -> dict:
         g = Github(self._get_token())
         r = g.get_repo(repo)
-        graph = GraphEngine()
 
         synced = {"issues": 0, "prs": 0, "commits": 0}
 
-        # Sync open issues as tasks
-        for issue in r.get_issues(state="open"):
-            await graph.create_node(
+        # Sync open issues as tasks (capped; skip issues already synced)
+        existing = await self._graph.find_nodes_by_metadata(
+            "github_number", source="github", project_id=project_id
+        )
+        existing_numbers = {n["metadata"]["github_number"] for n in existing}
+
+        for issue in itertools.islice(r.get_issues(state="open"), MAX_ISSUES):
+            if issue.number in existing_numbers:
+                continue  # already synced; avoid duplicates
+            await self._graph.create_node(
                 type="task",
                 title=issue.title,
                 body=issue.body or "",
@@ -544,9 +616,9 @@ class GitHubIntegration:
             )
             synced["issues"] += 1
 
-        # Sync recent commits as decisions/observations
-        for commit in r.get_commits()[:20]:
-            await memory.store(
+        # Sync recent commits — islice avoids PaginatedList slice TypeError
+        for commit in itertools.islice(r.get_commits(), MAX_COMMITS):
+            await self._memory.store(
                 content=f"Commit: {commit.commit.message}",
                 content_type="observation",
                 project_id=project_id,
@@ -562,30 +634,34 @@ class GitHubIntegration:
 ```python
 # app/integrations/notion.py
 from notion_client import Client as NotionClient
+from app.graph import GraphEngine
+from app.memory import MemoryEngine
 
 class NotionIntegration:
+    def __init__(self, graph: GraphEngine, memory: MemoryEngine):
+        self._graph  = graph   # injected — consistent with IntegrationRouter
+        self._memory = memory
+
     async def sync(self, page_id: str, project_id: str) -> dict:
         notion = NotionClient(auth=self._get_token())
         page = notion.pages.retrieve(page_id=page_id)
         blocks = notion.blocks.children.list(block_id=page_id)
 
-        # Convert blocks to text
         content = self._blocks_to_text(blocks["results"])
 
-        # Store as memory with high importance
-        await memory.store(
+        await self._memory.store(
             content=f"Notion page '{page['properties']['title']}': {content}",
             content_type="observation",
             project_id=project_id,
             importance=0.8
         )
 
-        # Extract any action items (lines starting with [ ] or TODO)
+        # Extract action items (lines starting with [ ] or TODO)
         tasks = self._extract_tasks(content)
         for task_text in tasks:
-            await graph.create_node(type="task", title=task_text,
-                                     metadata={"source": "notion",
-                                               "notion_page_id": page_id})
+            await self._graph.create_node(type="task", title=task_text,
+                                          metadata={"source": "notion",
+                                                    "notion_page_id": page_id})
 
         return {"page_synced": True, "tasks_found": len(tasks)}
 ```
@@ -703,8 +779,11 @@ project-os graph alpha --depth 2
 
 ```python
 # app/security/credentials.py
-from cryptography.fernet import Fernet
+import os
+import uuid
 import boto3
+from cryptography.fernet import Fernet
+from app.db import db
 
 class CredentialStore:
     def __init__(self):
