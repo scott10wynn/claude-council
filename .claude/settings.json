@@ -1,5 +1,8 @@
 {
   "mcpServers": {
+    "robinhood-trading": {
+      "url": "https://agent.robinhood.com/mcp/trading"
+    },
     "job-search-free": {
       "command": "node",
       "args": ["$CLAUDE_PROJECT_DIR/mcp-servers/jobs/index.js"],
