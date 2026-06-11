@@ -342,6 +342,6 @@ export const useResumeStore = create<ResumeStore>()(
 
       loadData: (data) => set({ data, isDirty: false }),
     }),
-    { name: 'resume-builder-v1' }
+    { name: 'resume-builder-v2' }
   )
 );
