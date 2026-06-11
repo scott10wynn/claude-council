@@ -7,7 +7,7 @@ import http from "http";
 
 const server = new McpServer({
   name: "job-search-free",
-  version: "1.3.0",
+  version: "1.4.0",
 });
 
 const USAJOBS_KEY = process.env.USAJOBS_API_KEY || "";
@@ -23,7 +23,9 @@ const FINANCE_ATS_COMPANIES = [
   { slug: "sofi",                    name: "SoFi",                     ats: "greenhouse" },
   { slug: "mercury",                 name: "Mercury",                  ats: "greenhouse" },
   { slug: "betterment",              name: "Betterment",               ats: "greenhouse" },
+  { slug: "current",                 name: "Current",                  ats: "greenhouse" },
   { slug: "wealthfront",             name: "Wealthfront",              ats: "lever"      },
+  { slug: "greenlight",              name: "Greenlight",               ats: "lever"      },
   // Payments & infrastructure
   { slug: "stripe",                  name: "Stripe",                   ats: "greenhouse" },
   { slug: "brex",                    name: "Brex",                     ats: "greenhouse" },
@@ -32,9 +34,17 @@ const FINANCE_ATS_COMPANIES = [
   { slug: "adyen",                   name: "Adyen",                    ats: "greenhouse" },
   { slug: "payoneer",                name: "Payoneer",                 ats: "greenhouse" },
   { slug: "melio",                   name: "Melio",                    ats: "greenhouse" },
+  { slug: "block",                   name: "Block (Square/Cash App)",  ats: "greenhouse" },
+  { slug: "alpaca",                  name: "Alpaca",                   ats: "greenhouse" },
+  // Trading & markets
+  { slug: "virtu",                   name: "Virtu Financial",          ats: "greenhouse" },
+  { slug: "iex",                     name: "IEX Group",                ats: "greenhouse" },
+  { slug: "tastytrade",              name: "tastytrade",               ats: "greenhouse" },
   // Equity / corporate finance tools
   { slug: "carta",                   name: "Carta",                    ats: "greenhouse" },
   { slug: "blend",                   name: "Blend",                    ats: "greenhouse" },
+  { slug: "anaplan",                 name: "Anaplan",                  ats: "greenhouse" },
+  { slug: "zuora",                   name: "Zuora",                    ats: "greenhouse" },
   // Payroll / HR finance
   { slug: "gusto",                   name: "Gusto",                    ats: "greenhouse" },
   { slug: "justworks",               name: "Justworks",                ats: "greenhouse" },
