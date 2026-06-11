@@ -226,6 +226,5 @@ def api_auto_fill(app_id):
 
 
 if __name__ == "__main__":
-    init_db()
     print("\n  Job Applicator running at http://localhost:5050\n")
     app.run(debug=True, port=5050, host="0.0.0.0")

@@ -248,6 +248,10 @@ async function sendEmail() {
   const toEmail = document.getElementById('email-to').value.trim();
   if (!toEmail) { showStatus('email-status', 'Enter recipient email.', 'error'); return; }
 
+  const sendBtn = document.querySelector('#email-modal .btn.primary');
+  sendBtn.disabled = true;
+  sendBtn.textContent = '⏳ Sending...';
+
   const res = await fetch(`/api/applications/${currentAppId}/send-email`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -261,6 +265,8 @@ async function sendEmail() {
     })
   });
   const data = await res.json();
+  sendBtn.disabled = false;
+  sendBtn.textContent = 'Send Email';
   showStatus('email-status', data.message, data.success ? 'success' : 'error');
   if (data.success) {
     loadApplications();

@@ -38,7 +38,10 @@ async def _fill_form(url: str, profile: dict, cover_letter: str) -> dict:
         for selectors, value in field_map:
             if not value:
                 continue
+            filled = False
             for selector in selectors:
+                if filled:
+                    break
                 try:
                     elements = await page.query_selector_all(selector)
                     for el in elements:
@@ -46,6 +49,7 @@ async def _fill_form(url: str, profile: dict, cover_letter: str) -> dict:
                             await el.click()
                             await el.fill(value)
                             filled_fields.append(selector)
+                            filled = True
                             break
                 except Exception:
                     pass
