@@ -273,11 +273,13 @@ assumptions. A contradiction is flagged when:
   classifier runs.
 
 ```python
-# Method on MemoryEngine (not a standalone function) so memory.detect_contradictions() works
-async def detect_contradictions(self, new_statement: str, project_id: str):
-    embedding = await self._embed(new_statement)
+# This is a method on MemoryEngine (see Section 4) — shown here for reference.
+# NLI is handled by _is_contradiction(), which calls Claude Haiku for binary classification.
+# The "assumptions" Qdrant collection is defined above and populated by flag_assumption().
+async def detect_contradictions(self, new_statement: str, project_id: str) -> list:
+    embedding  = await self._embed(new_statement)
     candidates = await self._qdrant.search(
-        collection_name="assumptions",  # matches the Qdrant collection defined above
+        collection_name="assumptions",
         query_vector=embedding,
         query_filter=Filter(must=[
             FieldCondition(key="project_id", match=MatchValue(value=project_id)),
@@ -285,13 +287,9 @@ async def detect_contradictions(self, new_statement: str, project_id: str):
         ]),
         limit=10
     )
-    contradictions = []
-    for c in candidates:
-        if c.score > 0.82:
-            polarity = classifier.predict([new_statement, c.payload["statement"]])
-            if polarity == "contradiction":
-                contradictions.append(c)
-    return contradictions
+    return [c for c in candidates
+            if c.score > 0.82 and await self._is_contradiction(
+                new_statement, c.payload["statement"])]
 ```
 
 ---
@@ -307,12 +305,14 @@ from app.db import db
 from app.memory import MemoryEngine
 from app.graph import GraphEngine
 from app.integrations import IntegrationRouter
+from app.security.credentials import CredentialStore
 from app import intelligence
 
-mcp = FastMCP("project-os")
-memory       = MemoryEngine()
-graph        = GraphEngine()
-integrations = IntegrationRouter(graph=graph, memory=memory)  # shared instances
+mcp              = FastMCP("project-os")
+memory           = MemoryEngine()
+graph            = GraphEngine()
+integrations     = IntegrationRouter(graph=graph, memory=memory)  # shared instances
+credential_store = CredentialStore()
 
 @mcp.tool()
 async def remember(content: str, content_type: str = "observation",
@@ -375,14 +375,18 @@ async def suggest_next_steps(project_id: str) -> list[str]:
     return await intelligence.suggest_next_steps(context)
 
 @mcp.tool()
-async def sync_github(repo: str, project_id: str) -> dict:
+async def sync_github(repo: str, project_id: str, user_id: str) -> dict:
     """Pull issues, PRs, and commits from a GitHub repo into the project graph."""
-    return await integrations.github.sync(repo=repo, project_id=project_id)
+    cred_ref = await db.get_integration_credential(user_id=user_id, provider="github")
+    token    = credential_store.resolve(cred_ref, user_id)
+    return await integrations.github.sync(repo=repo, project_id=project_id, token=token)
 
 @mcp.tool()
-async def sync_notion(page_id: str, project_id: str) -> dict:
+async def sync_notion(page_id: str, project_id: str, user_id: str) -> dict:
     """Sync a Notion page/database into the project graph."""
-    return await integrations.notion.sync(page_id=page_id, project_id=project_id)
+    cred_ref = await db.get_integration_credential(user_id=user_id, provider="notion")
+    token    = credential_store.resolve(cred_ref, user_id)
+    return await integrations.notion.sync(page_id=page_id, project_id=project_id, token=token)
 ```
 
 ### Memory Engine Core
@@ -449,11 +453,14 @@ class MemoryEngine:
             created = datetime.fromisoformat(r.payload["created_at"])
             days_ago = (now - created).days
             recency   = math.exp(-0.1 * days_ago)
-            # matches the 4-term spec formula (section 3)
+            # graph_dist: 0 if memory belongs to the queried project, 1 if a different
+            # project, 99 if no project — avoids a graph traversal on every recall
+            mem_project = r.payload.get("project_id")
+            hops = 0 if mem_project == project_id else (1 if mem_project else 99)
             score = (0.45 * r.score +
                      0.25 * recency +
                      0.20 * r.payload["importance"] +
-                     0.10 * (1 / (1 + r.payload.get("hops_to_project", 99))))
+                     0.10 * (1 / (1 + hops)))
             scored.append({**r.payload, "_score": score, "id": r.id})
 
         scored.sort(key=lambda x: x["_score"], reverse=True)
@@ -472,11 +479,24 @@ class MemoryEngine:
         )
         contradictions = []
         for c in candidates:
-            if c.score > 0.82:
-                polarity = classifier.predict([new_statement, c.payload["statement"]])
-                if polarity == "contradiction":
-                    contradictions.append(c)
+            if c.score > 0.82 and await self._is_contradiction(
+                new_statement, c.payload["statement"]
+            ):
+                contradictions.append(c)
         return contradictions
+
+    async def _is_contradiction(self, stmt_a: str, stmt_b: str) -> bool:
+        """NLI via Claude Haiku — cheap and fast for binary classification."""
+        from anthropic import AsyncAnthropic
+        client = AsyncAnthropic()
+        response = await client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=5,
+            system="Reply YES or NO only. No punctuation.",
+            messages=[{"role": "user", "content":
+                f"Do these two statements contradict each other?\nA: {stmt_a}\nB: {stmt_b}"}]
+        )
+        return response.content[0].text.strip().upper().startswith("YES")
 
     async def _embed(self, text: str) -> list[float]:
         resp = await _openai.embeddings.create(model="text-embedding-3-small", input=text)
@@ -587,17 +607,14 @@ class GitHubIntegration:
         self._graph  = graph   # injected — no fresh pool per call
         self._memory = memory
 
-    async def sync(self, repo: str, project_id: str) -> dict:
-        g = Github(self._get_token())
+    async def sync(self, repo: str, project_id: str, token: str) -> dict:
+        g = Github(token)  # token resolved by the MCP tool layer, not here
         r = g.get_repo(repo)
 
         synced = {"issues": 0, "prs": 0, "commits": 0}
 
         # Sync open issues as tasks (capped; skip issues already synced)
-        existing = await self._graph.find_nodes_by_metadata(
-            "github_number", source="github", project_id=project_id
-        )
-        existing_numbers = {n["metadata"]["github_number"] for n in existing}
+        existing_numbers = await self._graph.get_synced_github_numbers(project_id)
 
         for issue in itertools.islice(r.get_issues(state="open"), MAX_ISSUES):
             if issue.number in existing_numbers:
@@ -642,8 +659,8 @@ class NotionIntegration:
         self._graph  = graph   # injected — consistent with IntegrationRouter
         self._memory = memory
 
-    async def sync(self, page_id: str, project_id: str) -> dict:
-        notion = NotionClient(auth=self._get_token())
+    async def sync(self, page_id: str, project_id: str, token: str) -> dict:
+        notion = NotionClient(auth=token)  # token resolved by the MCP tool layer
         page = notion.pages.retrieve(page_id=page_id)
         blocks = notion.blocks.children.list(block_id=page_id)
 
@@ -993,6 +1010,507 @@ python server.py
 
 # 6. Test in Claude Code
 # /mcp  → should show project-os tools listed
+```
+
+---
+
+---
+
+## 14. Database Layer (app/db.py)
+
+```python
+# app/db.py
+import asyncpg
+import os
+
+_pool: asyncpg.Pool | None = None
+
+async def _get_pool() -> asyncpg.Pool:
+    global _pool
+    if _pool is None:
+        _pool = await asyncpg.create_pool(
+            dsn=os.environ["DATABASE_URL"],
+            min_size=2,
+            max_size=10
+        )
+    return _pool
+
+class _MemoriesTable:
+    async def insert(self, *, id: str, content: str, content_type: str,
+                     embedding_id: str, importance: float,
+                     session_id: str = "", node_id: str | None = None) -> None:
+        pool = await _get_pool()
+        await pool.execute(
+            """INSERT INTO memories
+                   (id, session_id, node_id, content, content_type, importance, embedding_id)
+               VALUES ($1, $2, $3::uuid, $4, $5, $6, $7)
+               ON CONFLICT (id) DO NOTHING""",
+            id, session_id, node_id, content, content_type, importance, embedding_id
+        )
+
+class _CredentialsTable:
+    async def insert(self, *, id: str, user_id: str, provider: str,
+                     encrypted_token: bytes) -> None:
+        pool = await _get_pool()
+        await pool.execute(
+            """INSERT INTO credentials (id, user_id, provider, encrypted_token)
+               VALUES ($1, $2::uuid, $3, $4)
+               ON CONFLICT (user_id, provider)
+               DO UPDATE SET encrypted_token = EXCLUDED.encrypted_token""",
+            id, user_id, provider, encrypted_token
+        )
+
+    async def get(self, *, id: str, user_id: str) -> dict:
+        pool = await _get_pool()
+        row = await pool.fetchrow(
+            "SELECT * FROM credentials WHERE id = $1 AND user_id = $2::uuid",
+            id, user_id
+        )
+        if row is None:
+            raise PermissionError(f"Credential {id} not found for user {user_id}")
+        return dict(row)
+
+class _DB:
+    memories    = _MemoriesTable()
+    credentials = _CredentialsTable()
+
+    async def create_assumption(self, *, statement: str, project_id: str,
+                                 confidence: float) -> str:
+        pool = await _get_pool()
+        row = await pool.fetchrow(
+            """INSERT INTO assumptions (project_id, statement, confidence)
+               VALUES ($1::uuid, $2, $3) RETURNING id""",
+            project_id, statement, confidence
+        )
+        return str(row["id"])
+
+    async def upsert_assumption_in_qdrant(self, *, assumption_id: str,
+                                           project_id: str, statement: str,
+                                           confidence: float,
+                                           embedding: list[float]) -> None:
+        """Keep the assumptions Qdrant collection in sync after each INSERT."""
+        from qdrant_client import AsyncQdrantClient
+        from qdrant_client.models import PointStruct
+        from datetime import datetime, timezone
+        qdrant = AsyncQdrantClient(host="localhost", port=6333)
+        await qdrant.upsert("assumptions", points=[
+            PointStruct(
+                id=assumption_id,
+                vector=embedding,
+                payload={
+                    "assumption_id": assumption_id,
+                    "project_id":    project_id,
+                    "statement":     statement,
+                    "confidence":    confidence,
+                    "status":        "active",
+                    "created_at":    datetime.now(timezone.utc).isoformat()
+                }
+            )
+        ])
+
+    async def get_due_reminders(self, *, project_id: str) -> list[dict]:
+        pool = await _get_pool()
+        rows = await pool.fetch(
+            """SELECT r.* FROM reminders r
+               WHERE r.node_id IN (
+                   SELECT id FROM nodes WHERE metadata->>'project_id' = $1
+               )
+               AND r.due_at <= NOW()
+               AND r.delivered = FALSE
+               ORDER BY r.due_at""",
+            project_id
+        )
+        return [dict(r) for r in rows]
+
+    async def get_integration_credential(self, *, user_id: str,
+                                          provider: str) -> str | None:
+        """Return the opaque credential ref_id for this user+provider."""
+        pool = await _get_pool()
+        row = await pool.fetchrow(
+            """SELECT credentials FROM integrations
+               WHERE user_id = $1::uuid AND provider = $2
+               LIMIT 1""",
+            user_id, provider
+        )
+        return row["credentials"] if row else None
+
+db = _DB()
+```
+
+### Wiring `flag_assumption` to keep Qdrant in sync
+
+Update `flag_assumption` in `server.py` to also embed and upsert the new assumption
+so `detect_contradictions` can find it on the next call:
+
+```python
+@mcp.tool()
+async def flag_assumption(statement: str, project_id: str,
+                           confidence: float = 0.8) -> dict:
+    contradictions  = await memory.detect_contradictions(statement, project_id)
+    assumption_id   = await db.create_assumption(
+        statement=statement, project_id=project_id, confidence=confidence
+    )
+    embedding = await memory._embed(statement)
+    await db.upsert_assumption_in_qdrant(
+        assumption_id=assumption_id, project_id=project_id,
+        statement=statement, confidence=confidence, embedding=embedding
+    )
+    return {
+        "assumption_id":       assumption_id,
+        "contradictions_found": len(contradictions),
+        "contradictions":      [c.payload for c in contradictions]
+    }
+```
+
+---
+
+## 15. Graph Engine (app/graph.py)
+
+```python
+# app/graph.py
+import uuid
+from app.db import _get_pool
+
+class GraphEngine:
+    async def create_node(self, *, type: str, title: str, body: str = "",
+                          metadata: dict | None = None,
+                          owner_id: str, project_id: str | None = None) -> dict:
+        pool = await _get_pool()
+        node_id = str(uuid.uuid4())
+        meta = {**(metadata or {})}
+        if project_id:
+            meta["project_id"] = project_id
+
+        await pool.execute(
+            """INSERT INTO nodes (id, type, title, body, owner_id, metadata)
+               VALUES ($1, $2, $3, $4, $5::uuid, $6)""",
+            node_id, type, title, body, owner_id, meta
+        )
+        return {"id": node_id, "type": type, "title": title,
+                "body": body, "metadata": meta}
+
+    async def create_edge(self, from_id: str, to_id: str,
+                          rel_type: str, metadata: dict | None = None) -> dict:
+        pool = await _get_pool()
+        edge_id = str(uuid.uuid4())
+        await pool.execute(
+            """INSERT INTO edges (id, from_id, to_id, rel_type, metadata)
+               VALUES ($1, $2::uuid, $3::uuid, $4, $5)""",
+            edge_id, from_id, to_id, rel_type, metadata or {}
+        )
+        return {"id": edge_id, "from_id": from_id,
+                "to_id": to_id, "rel_type": rel_type}
+
+    async def build_project_context(self, project_id: str) -> dict:
+        pool = await _get_pool()
+
+        project = await pool.fetchrow(
+            "SELECT * FROM nodes WHERE id = $1::uuid AND type = 'project'",
+            project_id
+        )
+        if project is None:
+            raise ValueError(f"Project {project_id!r} not found")
+
+        goals, open_tasks, recent_decisions, assumptions = await asyncio.gather(
+            pool.fetch(
+                """SELECT n.* FROM nodes n JOIN edges e ON e.to_id = n.id
+                   WHERE e.from_id = $1::uuid AND n.type = 'goal'
+                   AND n.status = 'active'""",
+                project_id
+            ),
+            pool.fetch(
+                """SELECT * FROM nodes
+                   WHERE metadata->>'project_id' = $1
+                   AND type = 'task' AND status != 'completed'
+                   ORDER BY created_at DESC LIMIT 50""",
+                project_id
+            ),
+            pool.fetch(
+                """SELECT * FROM nodes
+                   WHERE metadata->>'project_id' = $1
+                   AND type = 'decision'
+                   AND created_at > NOW() - INTERVAL '30 days'
+                   ORDER BY created_at DESC LIMIT 10""",
+                project_id
+            ),
+            pool.fetch(
+                "SELECT * FROM assumptions WHERE project_id = $1::uuid AND status = 'active'",
+                project_id
+            ),
+        )
+
+        return {
+            "id":               project_id,
+            "title":            project["title"],
+            "status":           project["status"],
+            "description":      project["body"] or "",
+            "goals":            [dict(g) for g in goals],
+            "open_tasks":       [dict(t) for t in open_tasks],
+            "recent_decisions": [dict(d) for d in recent_decisions],
+            "assumptions":      [dict(a) for a in assumptions],
+        }
+
+    async def get_synced_github_numbers(self, project_id: str) -> set[int]:
+        """Return GitHub issue numbers already imported for this project."""
+        pool = await _get_pool()
+        rows = await pool.fetch(
+            """SELECT (metadata->>'github_number')::int AS num
+               FROM nodes
+               WHERE metadata->>'source' = 'github'
+               AND metadata->>'project_id' = $1
+               AND (metadata->>'github_number') IS NOT NULL""",
+            project_id
+        )
+        return {r["num"] for r in rows}
+```
+
+> **Note:** `asyncio` must be imported at the top of `graph.py`
+> (`import asyncio`) — omitted above for brevity.
+
+---
+
+## 16. Infrastructure Files
+
+### docker-compose.yml
+
+```yaml
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER:     projectos
+      POSTGRES_PASSWORD: projectos
+      POSTGRES_DB:       projectos
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U projectos"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:v1.11.0
+    ports:
+      - "6333:6333"  # REST / gRPC
+      - "6334:6334"  # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6333/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  postgres_data:
+  qdrant_data:
+  redis_data:
+```
+
+### pyproject.toml
+
+```toml
+[build-system]
+requires      = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name            = "project-os"
+version         = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "mcp[cli]>=1.0.0",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.32.0",
+    "asyncpg>=0.29.0",
+    "qdrant-client>=1.11.0",
+    "openai>=1.54.0",
+    "anthropic>=0.40.0",
+    "PyGithub>=2.3.0",
+    "notion-client>=2.2.1",
+    "google-api-python-client>=2.150.0",
+    "google-auth-oauthlib>=1.2.0",
+    "boto3>=1.35.0",
+    "cryptography>=43.0.0",
+    "redis>=5.2.0",
+    "apscheduler>=3.10.4",
+    "click>=8.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "httpx>=0.27.0",
+]
+
+[project.scripts]
+project-os = "cli.project_os:cli"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+```
+
+---
+
+## 17. Database Migration (migrations/001_initial_schema.sql)
+
+Complete, runnable SQL. Run once against a fresh database:
+`psql $DATABASE_URL < migrations/001_initial_schema.sql`
+
+```sql
+-- Enable UUID generation
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+-- ── users ────────────────────────────────────────────────────────────────────
+-- Created first; nodes and integrations both reference it.
+CREATE TABLE users (
+    id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    email      TEXT        UNIQUE NOT NULL,
+    settings   JSONB       NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ── nodes ────────────────────────────────────────────────────────────────────
+CREATE TABLE nodes (
+    id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    type       TEXT        NOT NULL
+                           CHECK (type IN ('project','goal','task','person',
+                                          'decision','assumption','file','note')),
+    title      TEXT        NOT NULL,
+    body       TEXT,
+    status     TEXT        NOT NULL DEFAULT 'active'
+                           CHECK (status IN ('active','archived','completed','contradicted')),
+    owner_id   UUID        NOT NULL REFERENCES users(id),
+    metadata   JSONB       NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_nodes_type   ON nodes(type);
+CREATE INDEX idx_nodes_status ON nodes(status);
+CREATE INDEX idx_nodes_owner  ON nodes(owner_id);
+CREATE INDEX idx_nodes_meta   ON nodes USING gin(metadata);
+
+CREATE OR REPLACE FUNCTION _set_updated_at()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
+$$;
+
+CREATE TRIGGER nodes_updated_at
+    BEFORE UPDATE ON nodes
+    FOR EACH ROW EXECUTE FUNCTION _set_updated_at();
+
+-- ── edges ────────────────────────────────────────────────────────────────────
+CREATE TABLE edges (
+    id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    from_id    UUID        NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+    to_id      UUID        NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+    rel_type   TEXT        NOT NULL,
+    weight     FLOAT       NOT NULL DEFAULT 1.0,
+    metadata   JSONB       NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_edges_from ON edges(from_id);
+CREATE INDEX idx_edges_to   ON edges(to_id);
+CREATE INDEX idx_edges_rel  ON edges(rel_type);
+
+-- ── memories ─────────────────────────────────────────────────────────────────
+CREATE TABLE memories (
+    id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id   TEXT        NOT NULL DEFAULT '',
+    node_id      UUID        REFERENCES nodes(id) ON DELETE SET NULL,
+    content      TEXT        NOT NULL,
+    content_type TEXT        NOT NULL DEFAULT 'observation'
+                             CHECK (content_type IN
+                                ('observation','decision','assumption','question','answer')),
+    importance   FLOAT       NOT NULL DEFAULT 0.5
+                             CHECK (importance BETWEEN 0 AND 1),
+    embedding_id TEXT,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_memories_session ON memories(session_id);
+CREATE INDEX idx_memories_node    ON memories(node_id);
+CREATE INDEX idx_memories_type    ON memories(content_type);
+
+-- ── assumptions ──────────────────────────────────────────────────────────────
+CREATE TABLE assumptions (
+    id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    node_id          UUID        REFERENCES nodes(id) ON DELETE SET NULL,
+    project_id       UUID        NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+    statement        TEXT        NOT NULL,
+    confidence       FLOAT       NOT NULL DEFAULT 0.8
+                                 CHECK (confidence BETWEEN 0 AND 1),
+    status           TEXT        NOT NULL DEFAULT 'active'
+                                 CHECK (status IN
+                                    ('active','confirmed','contradicted','superseded')),
+    evidence_for     TEXT[]      NOT NULL DEFAULT '{}',
+    evidence_against TEXT[]      NOT NULL DEFAULT '{}',
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    resolved_at      TIMESTAMPTZ
+);
+
+CREATE INDEX idx_assumptions_project ON assumptions(project_id);
+CREATE INDEX idx_assumptions_status  ON assumptions(status);
+
+-- ── reminders ────────────────────────────────────────────────────────────────
+CREATE TABLE reminders (
+    id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id    UUID        NOT NULL REFERENCES users(id),
+    node_id    UUID        REFERENCES nodes(id) ON DELETE CASCADE,
+    message    TEXT        NOT NULL,
+    due_at     TIMESTAMPTZ NOT NULL,
+    recurrence TEXT,
+    delivered  BOOLEAN     NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_reminders_user ON reminders(user_id);
+CREATE INDEX idx_reminders_due  ON reminders(due_at) WHERE NOT delivered;
+
+-- ── integrations ─────────────────────────────────────────────────────────────
+CREATE TABLE integrations (
+    id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id        UUID        NOT NULL REFERENCES users(id),
+    provider       TEXT        NOT NULL,
+    resource_id    TEXT        NOT NULL,
+    node_id        UUID        REFERENCES nodes(id) ON DELETE SET NULL,
+    last_synced_at TIMESTAMPTZ,
+    sync_cursor    TEXT,
+    credentials    TEXT,        -- opaque ref_id into credentials table
+    UNIQUE(user_id, provider, resource_id)
+);
+
+-- ── credentials ──────────────────────────────────────────────────────────────
+-- KMS-encrypted OAuth tokens. Never queried by token value; only by ref_id.
+CREATE TABLE credentials (
+    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         UUID        NOT NULL REFERENCES users(id),
+    provider        TEXT        NOT NULL,
+    encrypted_token BYTEA       NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(user_id, provider)
+);
 ```
 
 ---
