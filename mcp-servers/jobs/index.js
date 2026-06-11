@@ -7,15 +7,16 @@ import http from "http";
 
 const server = new McpServer({
   name: "job-search-free",
-  version: "1.4.0",
+  version: "1.5.0",
 });
 
 const USAJOBS_KEY = process.env.USAJOBS_API_KEY || "";
 const ADZUNA_ID = process.env.ADZUNA_APP_ID || "";
 const ADZUNA_KEY = process.env.ADZUNA_APP_KEY || "";
 
-// Verified finance/fintech companies with active Greenhouse or Lever job boards
+// All verified companies with active Greenhouse, Lever, or Ashby job boards
 const FINANCE_ATS_COMPANIES = [
+  // === GREENHOUSE ===
   // Fintech / neobanks
   { slug: "robinhood",               name: "Robinhood",                ats: "greenhouse" },
   { slug: "coinbase",                name: "Coinbase",                 ats: "greenhouse" },
@@ -24,8 +25,7 @@ const FINANCE_ATS_COMPANIES = [
   { slug: "mercury",                 name: "Mercury",                  ats: "greenhouse" },
   { slug: "betterment",              name: "Betterment",               ats: "greenhouse" },
   { slug: "current",                 name: "Current",                  ats: "greenhouse" },
-  { slug: "wealthfront",             name: "Wealthfront",              ats: "lever"      },
-  { slug: "greenlight",              name: "Greenlight",               ats: "lever"      },
+  { slug: "found",                   name: "Found",                    ats: "greenhouse" },
   // Payments & infrastructure
   { slug: "stripe",                  name: "Stripe",                   ats: "greenhouse" },
   { slug: "brex",                    name: "Brex",                     ats: "greenhouse" },
@@ -36,23 +36,40 @@ const FINANCE_ATS_COMPANIES = [
   { slug: "melio",                   name: "Melio",                    ats: "greenhouse" },
   { slug: "block",                   name: "Block (Square/Cash App)",  ats: "greenhouse" },
   { slug: "alpaca",                  name: "Alpaca",                   ats: "greenhouse" },
+  { slug: "zuora",                   name: "Zuora",                    ats: "greenhouse" },
   // Trading & markets
   { slug: "virtu",                   name: "Virtu Financial",          ats: "greenhouse" },
   { slug: "iex",                     name: "IEX Group",                ats: "greenhouse" },
   { slug: "tastytrade",              name: "tastytrade",               ats: "greenhouse" },
+  // Identity / compliance
+  { slug: "alloy",                   name: "Alloy",                    ats: "greenhouse" },
+  { slug: "jumio",                   name: "Jumio",                    ats: "greenhouse" },
+  { slug: "clear",                   name: "CLEAR",                    ats: "greenhouse" },
   // Equity / corporate finance tools
   { slug: "carta",                   name: "Carta",                    ats: "greenhouse" },
   { slug: "blend",                   name: "Blend",                    ats: "greenhouse" },
   { slug: "anaplan",                 name: "Anaplan",                  ats: "greenhouse" },
-  { slug: "zuora",                   name: "Zuora",                    ats: "greenhouse" },
-  // Payroll / HR finance
+  // Payroll / HR / hiring
   { slug: "gusto",                   name: "Gusto",                    ats: "greenhouse" },
   { slug: "justworks",               name: "Justworks",                ats: "greenhouse" },
-  // Finance-adjacent / investment banking
+  { slug: "karat",                   name: "Karat",                    ats: "greenhouse" },
+  // Banking infrastructure
+  { slug: "treasuryprime",           name: "Treasury Prime",           ats: "greenhouse" },
+  // Other
   { slug: "financialtechnologypartners", name: "FT Partners",          ats: "greenhouse" },
   { slug: "breezeairways",           name: "Breeze Airways",           ats: "greenhouse" },
   { slug: "upwork",                  name: "Upwork",                   ats: "greenhouse" },
-  // Ashby ATS companies
+  { slug: "remote",                  name: "Remote.com",               ats: "greenhouse" },
+
+  // === LEVER ===
+  { slug: "wealthfront",             name: "Wealthfront",              ats: "lever"      },
+  { slug: "greenlight",              name: "Greenlight",               ats: "lever"      },
+  { slug: "coupa",                   name: "Coupa",                    ats: "lever"      },
+  { slug: "pigment",                 name: "Pigment",                  ats: "lever"      },
+  { slug: "drivetrain",              name: "Drivetrain",               ats: "lever"      },
+  { slug: "fundrise",                name: "Fundrise",                 ats: "lever"      },
+
+  // === ASHBY ===
   { slug: "ramp",                    name: "Ramp",                     ats: "ashby"      },
   { slug: "super.com",               name: "Super.com",                ats: "ashby"      },
   { slug: "polymarket",              name: "Polymarket",               ats: "ashby"      },
@@ -65,6 +82,27 @@ const FINANCE_ATS_COMPANIES = [
   { slug: "datatonic",               name: "Datatonic",                ats: "ashby"      },
   { slug: "dandelion",               name: "Dandelion",                ats: "ashby"      },
   { slug: "tennr",                   name: "Tennr",                    ats: "ashby"      },
+  { slug: "plaid",                   name: "Plaid",                    ats: "ashby"      },
+  { slug: "socure",                  name: "Socure",                   ats: "ashby"      },
+  { slug: "relay",                   name: "Relay",                    ats: "ashby"      },
+  { slug: "rho",                     name: "Rho",                      ats: "ashby"      },
+  { slug: "paddle",                  name: "Paddle",                   ats: "ashby"      },
+  { slug: "sardine",                 name: "Sardine",                  ats: "ashby"      },
+  { slug: "revenuecat",              name: "RevenueCat",               ats: "ashby"      },
+  { slug: "novo",                    name: "Novo",                     ats: "ashby"      },
+  { slug: "column",                  name: "Column",                   ats: "ashby"      },
+  { slug: "acorns",                  name: "Acorns",                   ats: "ashby"      },
+  { slug: "cube",                    name: "Cube",                     ats: "ashby"      },
+  { slug: "wayflyer",                name: "Wayflyer",                 ats: "ashby"      },
+  { slug: "brigit",                  name: "Brigit",                   ats: "ashby"      },
+  { slug: "unit",                    name: "Unit",                     ats: "ashby"      },
+  { slug: "mosaic",                  name: "Mosaic",                   ats: "ashby"      },
+  { slug: "atomic",                  name: "Atomic",                   ats: "ashby"      },
+  { slug: "clearco",                 name: "Clearco",                  ats: "ashby"      },
+  { slug: "synctera",                name: "Synctera",                 ats: "ashby"      },
+  { slug: "capchase",                name: "Capchase",                 ats: "ashby"      },
+  { slug: "causal",                  name: "Causal",                   ats: "ashby"      },
+  { slug: "stash",                   name: "Stash",                    ats: "ashby"      },
 ];
 
 const FINANCE_TITLE_KEYWORDS = [
@@ -295,16 +333,20 @@ async function searchFinanceATS(query, internshipOnly) {
 
       return jobs.filter((j) => {
         const title = j.title?.toLowerCase() || "";
-        const isExcluded = FINANCE_EXCLUDE_TITLE.some((ex) => title.includes(ex));
-        if (isExcluded) return false;
         const wordMatch = (str, word) => new RegExp(`\\b${word}\\b`).test(str);
         const isIntern = wordMatch(title, "intern") || wordMatch(title, "co-op") || title.includes("internship");
         if (internshipOnly && !isIntern) return false;
-        const isFinance = FINANCE_TITLE_KEYWORDS.some((kw) => title.includes(kw));
-        if (!q) return isFinance;
-        const queryWords = q.split(/\s+/).filter(Boolean);
-        const matchesQuery = queryWords.every((w) => wordMatch(title, w) || title.includes(w));
-        return isFinance || matchesQuery;
+
+        // Specific query: match against any role, no finance filter
+        if (q) {
+          const queryWords = q.split(/\s+/).filter(Boolean);
+          return queryWords.every((w) => wordMatch(title, w) || title.includes(w));
+        }
+
+        // No query: return finance roles only (exclude noise)
+        const isExcluded = FINANCE_EXCLUDE_TITLE.some((ex) => title.includes(ex));
+        if (isExcluded) return false;
+        return FINANCE_TITLE_KEYWORDS.some((kw) => title.includes(kw));
       });
     } catch {
       return [];
@@ -318,7 +360,7 @@ async function searchFinanceATS(query, internshipOnly) {
 server.tool(
   "search_finance_native",
   {
-    query: z.string().optional().default("").describe("Finance keywords to search for (e.g. 'FP&A', 'accounting intern', 'treasury'). Leave blank to return all finance roles."),
+    query: z.string().optional().default("").describe("Job title or keywords to search (e.g. 'software engineer', 'FP&A intern', 'data analyst'). Leave blank to return all finance roles across all companies."),
     internship_only: z.boolean().optional().default(false).describe("Set true to return only internship and co-op roles"),
   },
   async ({ query, internship_only }) => {
