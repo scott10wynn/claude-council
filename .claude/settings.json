@@ -1,5 +1,27 @@
 {
+  "mcpServers": {
+    "job-search-free": {
+      "command": "node",
+      "args": ["$CLAUDE_PROJECT_DIR/mcp-servers/jobs/index.js"],
+      "description": "Finance job boards: Greenhouse, Lever, Ashby (74 companies), Remotive, RemoteOK, Himalayas, Jobicy, Arbeitnow, The Muse, USAJobs, Adzuna",
+      "env": {
+        "USAJOBS_API_KEY": "",
+        "ADZUNA_APP_ID": "",
+        "ADZUNA_APP_KEY": ""
+      }
+    }
+  },
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh"
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash",
