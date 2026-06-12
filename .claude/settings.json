@@ -1,4 +1,23 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git branch*)",
+      "Bash(git show*)",
+      "Bash(git fetch*)",
+      "Bash(rg *)",
+      "Bash(ls*)",
+      "Bash(pwd)",
+      "Bash(echo *)",
+      "Bash(node --version)",
+      "Bash(npm run lint*)",
+      "Read(*)",
+      "Glob(*)",
+      "Grep(*)"
+    ]
+  },
   "mcpServers": {
     "robinhood-trading": {
       "url": "https://agent.robinhood.com/mcp/trading"

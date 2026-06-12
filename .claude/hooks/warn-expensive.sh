@@ -24,7 +24,7 @@ if echo "$cmd" | grep -qE 'ls[[:space:]]+-[a-zA-Z]*R'; then
 fi
 
 # Full test suite signals
-if echo "$cmd" | grep -qE '(pytest|jest|npm test|yarn test|go test \./\.\.\.)[[:space:]]*$'; then
+if echo "$cmd" | grep -qE '(pytest|jest|npm test|npm run test|yarn test|go test \./\.\.\.)[[:space:]]*$'; then
   warn "Full test suite detected. Prefer running only relevant test files. Use /changed-tests to identify them."
 fi
 
