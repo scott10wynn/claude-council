@@ -22,6 +22,18 @@
 
 ---
 
+## Trading Rules
+
+When helping with any trade, order, or investment decision:
+- Always read `docs/trading-strategy.md` before proceeding
+- Use the `/trade` command workflow for any order placement
+- Never place an order without a defined stop loss and price target from the user
+- Never exceed the 2% portfolio risk rule per trade without explicit user override
+- Always call `review_equity_order` before `place_equity_order`
+- Always require explicit written confirmation before placing any order
+
+---
+
 ## Claude Code Efficiency Rules
 
 ## Search before reading
