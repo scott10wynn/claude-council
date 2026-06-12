@@ -32,6 +32,16 @@ export function TariffCalculator() {
 
   const formattedHts = useMemo(() => formatHtsCode(htsInput), [htsInput]);
 
+  function renderOption(code: string) {
+    const c = COUNTRY_PROFILES.find(p => p.code === code);
+    if (!c) return null;
+    return (
+      <option key={c.code} value={c.code}>
+        {c.name}{c.preferentialAgreement ? ` — ${c.preferentialAgreement}` : ''}
+      </option>
+    );
+  }
+
   function calculate() {
     setError('');
     setResult(null);
@@ -141,11 +151,39 @@ export function TariffCalculator() {
                 onChange={e => setCountryCode(e.target.value)}
                 className="h-9 w-full rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
-                {COUNTRY_PROFILES.map(c => (
-                  <option key={c.code} value={c.code}>
-                    {c.name} {c.preferentialAgreement ? `(${c.preferentialAgreement})` : ''}
-                  </option>
-                ))}
+                <optgroup label="── East Asia">
+                  {['CN','HK','JP','KR','TW'].map(code => renderOption(code))}
+                </optgroup>
+                <optgroup label="── Southeast Asia">
+                  {['VN','TH','ID','MY','PH','KH','MM','SG'].map(code => renderOption(code))}
+                </optgroup>
+                <optgroup label="── South Asia">
+                  {['IN','BD','PK','LK'].map(code => renderOption(code))}
+                </optgroup>
+                <optgroup label="── North America">
+                  {['MX','CA'].map(code => renderOption(code))}
+                </optgroup>
+                <optgroup label="── Central America & Caribbean (CAFTA-DR)">
+                  {['CR','SV','GT','HN','NI','DO'].map(code => renderOption(code))}
+                </optgroup>
+                <optgroup label="── South America">
+                  {['CL','CO','PE','PA','BR','AR'].map(code => renderOption(code))}
+                </optgroup>
+                <optgroup label="── Europe">
+                  {['DE','FR','IT','ES','NL','PL','GB','CH','TR','RU','UA'].map(code => renderOption(code))}
+                </optgroup>
+                <optgroup label="── Middle East">
+                  {['IL','JO','BH','OM','AE','SA'].map(code => renderOption(code))}
+                </optgroup>
+                <optgroup label="── Africa">
+                  {['MA','ZA','KE','ET','NG','GH','EG'].map(code => renderOption(code))}
+                </optgroup>
+                <optgroup label="── Oceania">
+                  {['AU','NZ'].map(code => renderOption(code))}
+                </optgroup>
+                <optgroup label="──">
+                  {renderOption('OTHER')}
+                </optgroup>
               </select>
               <span className="text-xs text-gray-400">Destination: United States</span>
             </div>

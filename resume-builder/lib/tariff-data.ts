@@ -127,6 +127,7 @@ export const HTS_CHAPTERS: HtsChapter[] = [
 
 // Country profiles with applicable tariff programs for US imports
 export const COUNTRY_PROFILES: CountryProfile[] = [
+  // ── East Asia ──────────────────────────────────────────────────────────────
   {
     code: 'CN',
     name: 'China',
@@ -134,11 +135,11 @@ export const COUNTRY_PROFILES: CountryProfile[] = [
       {
         name: 'Section 301 Tariffs (Lists 1–4)',
         additionalRate: 25,
-        description: 'USTR Section 301 tariffs imposed from 2018. Most goods covered at 25%; List 4A goods at 7.5%.',
+        description: 'USTR Section 301 tariffs imposed from 2018. Most goods at 25%; List 4A goods at 7.5%.',
         effectiveDate: '2018-07-06',
         source: 'USTR Section 301',
         appliesTo: 'Most goods from China',
-        exceptions: 'Some medical, agricultural products may qualify for exclusions',
+        exceptions: 'Some medical and agricultural products may qualify for exclusions',
       },
       {
         name: '2025 Executive Order Tariffs',
@@ -152,76 +153,17 @@ export const COUNTRY_PROFILES: CountryProfile[] = [
     ],
   },
   {
-    code: 'MX',
-    name: 'Mexico',
-    preferentialAgreement: 'USMCA',
+    code: 'HK',
+    name: 'Hong Kong',
     programs: [
       {
-        name: 'USMCA Preference',
-        additionalRate: -999,
-        description: 'Goods qualifying under USMCA rules of origin may enter duty-free. Must meet regional value content and tariff shift requirements.',
-        effectiveDate: '2020-07-01',
-        source: 'USMCA Chapter 4',
-        appliesTo: 'Goods meeting USMCA rules of origin',
-        exceptions: 'Must obtain certificate of origin; some agricultural quotas apply',
-      },
-    ],
-  },
-  {
-    code: 'CA',
-    name: 'Canada',
-    preferentialAgreement: 'USMCA',
-    programs: [
-      {
-        name: 'USMCA Preference',
-        additionalRate: -999,
-        description: 'Goods qualifying under USMCA rules of origin may enter duty-free.',
-        effectiveDate: '2020-07-01',
-        source: 'USMCA Chapter 4',
-        appliesTo: 'Goods meeting USMCA rules of origin',
-        exceptions: 'Must obtain certificate of origin; dairy, poultry, eggs have TRQs',
-      },
-    ],
-  },
-  {
-    code: 'VN',
-    name: 'Vietnam',
-    programs: [
-      {
-        name: 'No Preferential Agreement',
-        additionalRate: 0,
-        description: 'Vietnam does not have a free trade agreement with the US. MFN rates apply.',
-        effectiveDate: '2001-12-10',
-        source: 'Normal Trade Relations',
-        appliesTo: 'All goods',
-      },
-    ],
-  },
-  {
-    code: 'IN',
-    name: 'India',
-    programs: [
-      {
-        name: 'MFN Rates Apply',
-        additionalRate: 0,
-        description: 'India lost GSP (Generalized System of Preferences) benefits in 2019. Standard MFN rates apply.',
-        effectiveDate: '2019-06-05',
-        source: 'Normal Trade Relations',
-        appliesTo: 'All goods',
-      },
-    ],
-  },
-  {
-    code: 'DE',
-    name: 'Germany',
-    programs: [
-      {
-        name: 'MFN Rates Apply',
-        additionalRate: 0,
-        description: 'EU countries are MFN trading partners. No FTA with the US. Standard MFN rates apply.',
-        effectiveDate: 'Ongoing',
-        source: 'Normal Trade Relations',
-        appliesTo: 'All goods',
+        name: 'Treated as China (Post-2020)',
+        additionalRate: 170,
+        description: 'In 2020 the US revoked Hong Kong\'s separate customs status. Goods of Hong Kong origin are generally treated the same as mainland Chinese goods and subject to Section 301 + 2025 tariffs.',
+        effectiveDate: '2020-07-14',
+        source: 'Executive Order 13936',
+        appliesTo: 'Goods of Hong Kong origin',
+        exceptions: 'Goods of third-country origin transshipped through Hong Kong are not automatically subject to China tariffs — origin rules apply',
       },
     ],
   },
@@ -269,6 +211,800 @@ export const COUNTRY_PROFILES: CountryProfile[] = [
       },
     ],
   },
+  // ── Southeast Asia ─────────────────────────────────────────────────────────
+  {
+    code: 'VN',
+    name: 'Vietnam',
+    programs: [
+      {
+        name: 'MFN Rates Apply',
+        additionalRate: 0,
+        description: 'Vietnam is an MFN trading partner with no US FTA. Standard MFN rates apply.',
+        effectiveDate: '2001-12-10',
+        source: 'Normal Trade Relations',
+        appliesTo: 'All goods',
+        exceptions: 'USTR has investigated Vietnam for currency manipulation and trade diversion; verify no Section 301 action applies to your product',
+      },
+    ],
+  },
+  {
+    code: 'TH',
+    name: 'Thailand',
+    programs: [
+      {
+        name: 'MFN Rates Apply',
+        additionalRate: 0,
+        description: 'Thailand is an MFN trading partner. No FTA with the US. Standard MFN rates apply.',
+        effectiveDate: 'Ongoing',
+        source: 'Normal Trade Relations',
+        appliesTo: 'All goods',
+      },
+    ],
+  },
+  {
+    code: 'ID',
+    name: 'Indonesia',
+    programs: [
+      {
+        name: 'GSP Eligible (reinstated 2023)',
+        additionalRate: 0,
+        description: 'Indonesia is a GSP (Generalized System of Preferences) beneficiary. Many goods eligible for duty-free entry under GSP. Verify the specific HTS code is on the eligible product list.',
+        effectiveDate: '2023-04-26',
+        source: 'US GSP Program',
+        appliesTo: 'GSP-eligible goods',
+        exceptions: 'Must meet 35% value-added requirement; competitive need limits apply; some products excluded',
+      },
+    ],
+  },
+  {
+    code: 'MY',
+    name: 'Malaysia',
+    programs: [
+      {
+        name: 'MFN Rates Apply',
+        additionalRate: 0,
+        description: 'Malaysia is an MFN trading partner. No FTA with the US. Standard MFN rates apply.',
+        effectiveDate: 'Ongoing',
+        source: 'Normal Trade Relations',
+        appliesTo: 'All goods',
+      },
+    ],
+  },
+  {
+    code: 'PH',
+    name: 'Philippines',
+    programs: [
+      {
+        name: 'GSP Eligible (reinstated 2023)',
+        additionalRate: 0,
+        description: 'Philippines is a GSP beneficiary. Eligible goods may enter duty-free under GSP.',
+        effectiveDate: '2023-04-26',
+        source: 'US GSP Program',
+        appliesTo: 'GSP-eligible goods',
+        exceptions: 'Must meet value-added and direct shipment requirements; verify eligibility by HTS code',
+      },
+    ],
+  },
+  {
+    code: 'KH',
+    name: 'Cambodia',
+    programs: [
+      {
+        name: 'GSP Eligible (reinstated 2023)',
+        additionalRate: 0,
+        description: 'Cambodia is a GSP beneficiary. Eligible goods may enter duty-free. Major exporter of apparel and footwear.',
+        effectiveDate: '2023-04-26',
+        source: 'US GSP Program',
+        appliesTo: 'GSP-eligible goods',
+        exceptions: 'Apparel (Ch. 61–62) is typically NOT eligible for GSP; verify by HTS code',
+      },
+    ],
+  },
+  {
+    code: 'MM',
+    name: 'Myanmar (Burma)',
+    programs: [
+      {
+        name: 'MFN — Sanctions Risk',
+        additionalRate: 0,
+        description: 'Myanmar is an MFN trading partner. However, US sanctions (BURMA Act, OFAC) restrict trade with certain entities. Verify compliance before importing.',
+        effectiveDate: 'Ongoing',
+        source: 'Normal Trade Relations / OFAC',
+        appliesTo: 'All goods',
+        exceptions: 'OFAC sanctions apply to specified Burmese entities; forced labor risks under UFLPA may apply',
+      },
+    ],
+  },
+  {
+    code: 'SG',
+    name: 'Singapore',
+    preferentialAgreement: 'US-Singapore FTA',
+    programs: [
+      {
+        name: 'US-Singapore FTA Preference',
+        additionalRate: -999,
+        description: 'US-Singapore Free Trade Agreement provides duty-free or reduced rates on most goods.',
+        effectiveDate: '2004-01-01',
+        source: 'US-Singapore FTA',
+        appliesTo: 'Goods meeting rules of origin',
+        exceptions: 'Must meet rules of origin; certificate of origin required',
+      },
+    ],
+  },
+  // ── South Asia ─────────────────────────────────────────────────────────────
+  {
+    code: 'IN',
+    name: 'India',
+    programs: [
+      {
+        name: 'MFN Rates Apply',
+        additionalRate: 0,
+        description: 'India lost GSP benefits in June 2019. Standard MFN rates now apply to all Indian goods.',
+        effectiveDate: '2019-06-05',
+        source: 'Normal Trade Relations',
+        appliesTo: 'All goods',
+      },
+    ],
+  },
+  {
+    code: 'BD',
+    name: 'Bangladesh',
+    programs: [
+      {
+        name: 'MFN Rates Apply (No GSP for Apparel)',
+        additionalRate: 0,
+        description: 'Bangladesh is an MFN trading partner. GSP was suspended in 2013 due to labor rights concerns and Bangladesh is not GSP-reinstated for most goods. Major apparel exporter — MFN rates (up to 32%) apply to garments.',
+        effectiveDate: 'Ongoing',
+        source: 'Normal Trade Relations',
+        appliesTo: 'All goods',
+        exceptions: 'Bangladesh is not currently a GSP beneficiary for most products; verify current status',
+      },
+    ],
+  },
+  {
+    code: 'PK',
+    name: 'Pakistan',
+    programs: [
+      {
+        name: 'MFN Rates Apply',
+        additionalRate: 0,
+        description: 'Pakistan is an MFN trading partner. No FTA with the US. Standard MFN rates apply.',
+        effectiveDate: 'Ongoing',
+        source: 'Normal Trade Relations',
+        appliesTo: 'All goods',
+      },
+    ],
+  },
+  {
+    code: 'LK',
+    name: 'Sri Lanka',
+    programs: [
+      {
+        name: 'GSP Eligible (reinstated 2023)',
+        additionalRate: 0,
+        description: 'Sri Lanka is a GSP beneficiary (reinstated 2023). Eligible goods may enter duty-free.',
+        effectiveDate: '2023-04-26',
+        source: 'US GSP Program',
+        appliesTo: 'GSP-eligible goods',
+        exceptions: 'Apparel generally not GSP eligible; verify by HTS code',
+      },
+    ],
+  },
+  // ── North America ──────────────────────────────────────────────────────────
+  {
+    code: 'MX',
+    name: 'Mexico',
+    preferentialAgreement: 'USMCA',
+    programs: [
+      {
+        name: 'USMCA Preference',
+        additionalRate: -999,
+        description: 'Goods qualifying under USMCA rules of origin may enter duty-free.',
+        effectiveDate: '2020-07-01',
+        source: 'USMCA Chapter 4',
+        appliesTo: 'Goods meeting USMCA rules of origin',
+        exceptions: 'Must obtain certificate of origin; some agricultural quotas apply',
+      },
+    ],
+  },
+  {
+    code: 'CA',
+    name: 'Canada',
+    preferentialAgreement: 'USMCA',
+    programs: [
+      {
+        name: 'USMCA Preference',
+        additionalRate: -999,
+        description: 'Goods qualifying under USMCA rules of origin may enter duty-free.',
+        effectiveDate: '2020-07-01',
+        source: 'USMCA Chapter 4',
+        appliesTo: 'Goods meeting USMCA rules of origin',
+        exceptions: 'Must obtain certificate of origin; dairy, poultry, eggs have TRQs',
+      },
+    ],
+  },
+  // ── Central America & Caribbean (CAFTA-DR) ─────────────────────────────────
+  {
+    code: 'CR',
+    name: 'Costa Rica',
+    preferentialAgreement: 'CAFTA-DR',
+    programs: [
+      {
+        name: 'CAFTA-DR Preference',
+        additionalRate: -999,
+        description: 'Costa Rica is a CAFTA-DR party. Most goods enter duty-free for qualifying products.',
+        effectiveDate: '2009-01-01',
+        source: 'CAFTA-DR',
+        appliesTo: 'Goods meeting CAFTA-DR rules of origin',
+        exceptions: 'Must meet rules of origin and obtain certification',
+      },
+    ],
+  },
+  {
+    code: 'SV',
+    name: 'El Salvador',
+    preferentialAgreement: 'CAFTA-DR',
+    programs: [
+      {
+        name: 'CAFTA-DR Preference',
+        additionalRate: -999,
+        description: 'El Salvador is a CAFTA-DR party. Most goods enter duty-free for qualifying products.',
+        effectiveDate: '2006-03-01',
+        source: 'CAFTA-DR',
+        appliesTo: 'Goods meeting CAFTA-DR rules of origin',
+        exceptions: 'Must meet rules of origin and obtain certification',
+      },
+    ],
+  },
+  {
+    code: 'GT',
+    name: 'Guatemala',
+    preferentialAgreement: 'CAFTA-DR',
+    programs: [
+      {
+        name: 'CAFTA-DR Preference',
+        additionalRate: -999,
+        description: 'Guatemala is a CAFTA-DR party. Most goods enter duty-free for qualifying products.',
+        effectiveDate: '2006-07-01',
+        source: 'CAFTA-DR',
+        appliesTo: 'Goods meeting CAFTA-DR rules of origin',
+        exceptions: 'Must meet rules of origin and obtain certification',
+      },
+    ],
+  },
+  {
+    code: 'HN',
+    name: 'Honduras',
+    preferentialAgreement: 'CAFTA-DR',
+    programs: [
+      {
+        name: 'CAFTA-DR Preference',
+        additionalRate: -999,
+        description: 'Honduras is a CAFTA-DR party. Most goods enter duty-free for qualifying products.',
+        effectiveDate: '2006-04-01',
+        source: 'CAFTA-DR',
+        appliesTo: 'Goods meeting CAFTA-DR rules of origin',
+        exceptions: 'Must meet rules of origin and obtain certification',
+      },
+    ],
+  },
+  {
+    code: 'NI',
+    name: 'Nicaragua',
+    preferentialAgreement: 'CAFTA-DR',
+    programs: [
+      {
+        name: 'CAFTA-DR Preference',
+        additionalRate: -999,
+        description: 'Nicaragua is a CAFTA-DR party. Most goods enter duty-free for qualifying products.',
+        effectiveDate: '2006-04-01',
+        source: 'CAFTA-DR',
+        appliesTo: 'Goods meeting CAFTA-DR rules of origin',
+        exceptions: 'Must meet rules of origin and obtain certification',
+      },
+    ],
+  },
+  {
+    code: 'DO',
+    name: 'Dominican Republic',
+    preferentialAgreement: 'CAFTA-DR',
+    programs: [
+      {
+        name: 'CAFTA-DR Preference',
+        additionalRate: -999,
+        description: 'Dominican Republic is a CAFTA-DR party. Most goods enter duty-free for qualifying products.',
+        effectiveDate: '2007-03-01',
+        source: 'CAFTA-DR',
+        appliesTo: 'Goods meeting CAFTA-DR rules of origin',
+        exceptions: 'Must meet rules of origin and obtain certification',
+      },
+    ],
+  },
+  // ── South America ──────────────────────────────────────────────────────────
+  {
+    code: 'CL',
+    name: 'Chile',
+    preferentialAgreement: 'US-Chile FTA',
+    programs: [
+      {
+        name: 'US-Chile FTA Preference',
+        additionalRate: -999,
+        description: 'US-Chile Free Trade Agreement. Most goods enter duty-free.',
+        effectiveDate: '2004-01-01',
+        source: 'US-Chile FTA',
+        appliesTo: 'Goods meeting rules of origin',
+        exceptions: 'Must meet rules of origin; some agricultural tariff-rate quotas',
+      },
+    ],
+  },
+  {
+    code: 'CO',
+    name: 'Colombia',
+    preferentialAgreement: 'US-Colombia TPA',
+    programs: [
+      {
+        name: 'US-Colombia Trade Promotion Agreement',
+        additionalRate: -999,
+        description: 'US-Colombia TPA. Most goods enter duty-free or at reduced rates.',
+        effectiveDate: '2012-05-15',
+        source: 'US-Colombia TPA',
+        appliesTo: 'Goods meeting rules of origin',
+        exceptions: 'Must meet rules of origin; some agricultural products have staged cuts',
+      },
+    ],
+  },
+  {
+    code: 'PE',
+    name: 'Peru',
+    preferentialAgreement: 'US-Peru TPA',
+    programs: [
+      {
+        name: 'US-Peru Trade Promotion Agreement',
+        additionalRate: -999,
+        description: 'US-Peru TPA. Most goods enter duty-free.',
+        effectiveDate: '2009-02-01',
+        source: 'US-Peru TPA',
+        appliesTo: 'Goods meeting rules of origin',
+        exceptions: 'Must meet rules of origin',
+      },
+    ],
+  },
+  {
+    code: 'PA',
+    name: 'Panama',
+    preferentialAgreement: 'US-Panama TPA',
+    programs: [
+      {
+        name: 'US-Panama Trade Promotion Agreement',
+        additionalRate: -999,
+        description: 'US-Panama TPA. Most goods enter duty-free.',
+        effectiveDate: '2012-10-31',
+        source: 'US-Panama TPA',
+        appliesTo: 'Goods meeting rules of origin',
+        exceptions: 'Must meet rules of origin',
+      },
+    ],
+  },
+  {
+    code: 'BR',
+    name: 'Brazil',
+    programs: [
+      {
+        name: 'MFN Rates Apply',
+        additionalRate: 0,
+        description: 'Brazil is an MFN trading partner. No FTA with the US. Standard MFN rates apply.',
+        effectiveDate: 'Ongoing',
+        source: 'Normal Trade Relations',
+        appliesTo: 'All goods',
+      },
+    ],
+  },
+  {
+    code: 'AR',
+    name: 'Argentina',
+    programs: [
+      {
+        name: 'MFN Rates Apply',
+        additionalRate: 0,
+        description: 'Argentina is an MFN trading partner. No FTA with the US. Standard MFN rates apply.',
+        effectiveDate: 'Ongoing',
+        source: 'Normal Trade Relations',
+        appliesTo: 'All goods',
+      },
+    ],
+  },
+  // ── Europe ─────────────────────────────────────────────────────────────────
+  {
+    code: 'DE',
+    name: 'Germany (EU)',
+    programs: [
+      {
+        name: 'MFN Rates Apply',
+        additionalRate: 0,
+        description: 'EU member states are MFN trading partners. No US-EU FTA. Standard MFN rates apply to all EU-origin goods.',
+        effectiveDate: 'Ongoing',
+        source: 'Normal Trade Relations',
+        appliesTo: 'All goods',
+      },
+    ],
+  },
+  {
+    code: 'FR',
+    name: 'France (EU)',
+    programs: [
+      {
+        name: 'MFN Rates Apply',
+        additionalRate: 0,
+        description: 'EU member state — MFN rates apply. No US-EU FTA.',
+        effectiveDate: 'Ongoing',
+        source: 'Normal Trade Relations',
+        appliesTo: 'All goods',
+      },
+    ],
+  },
+  {
+    code: 'IT',
+    name: 'Italy (EU)',
+    programs: [
+      {
+        name: 'MFN Rates Apply',
+        additionalRate: 0,
+        description: 'EU member state — MFN rates apply. No US-EU FTA.',
+        effectiveDate: 'Ongoing',
+        source: 'Normal Trade Relations',
+        appliesTo: 'All goods',
+      },
+    ],
+  },
+  {
+    code: 'ES',
+    name: 'Spain (EU)',
+    programs: [
+      {
+        name: 'MFN Rates Apply',
+        additionalRate: 0,
+        description: 'EU member state — MFN rates apply. No US-EU FTA.',
+        effectiveDate: 'Ongoing',
+        source: 'Normal Trade Relations',
+        appliesTo: 'All goods',
+      },
+    ],
+  },
+  {
+    code: 'NL',
+    name: 'Netherlands (EU)',
+    programs: [
+      {
+        name: 'MFN Rates Apply',
+        additionalRate: 0,
+        description: 'EU member state — MFN rates apply. No US-EU FTA.',
+        effectiveDate: 'Ongoing',
+        source: 'Normal Trade Relations',
+        appliesTo: 'All goods',
+      },
+    ],
+  },
+  {
+    code: 'PL',
+    name: 'Poland (EU)',
+    programs: [
+      {
+        name: 'MFN Rates Apply',
+        additionalRate: 0,
+        description: 'EU member state — MFN rates apply. No US-EU FTA.',
+        effectiveDate: 'Ongoing',
+        source: 'Normal Trade Relations',
+        appliesTo: 'All goods',
+      },
+    ],
+  },
+  {
+    code: 'GB',
+    name: 'United Kingdom',
+    programs: [
+      {
+        name: 'MFN Rates Apply (Post-Brexit)',
+        additionalRate: 0,
+        description: 'Since Brexit (Jan 2021) the UK is an independent customs territory. No US-UK FTA has been concluded. Standard MFN rates apply.',
+        effectiveDate: '2021-01-01',
+        source: 'Normal Trade Relations',
+        appliesTo: 'All goods',
+      },
+    ],
+  },
+  {
+    code: 'CH',
+    name: 'Switzerland',
+    programs: [
+      {
+        name: 'MFN Rates Apply',
+        additionalRate: 0,
+        description: 'Switzerland is an MFN trading partner. No FTA with the US. Standard MFN rates apply.',
+        effectiveDate: 'Ongoing',
+        source: 'Normal Trade Relations',
+        appliesTo: 'All goods',
+      },
+    ],
+  },
+  {
+    code: 'TR',
+    name: 'Turkey',
+    programs: [
+      {
+        name: 'MFN Rates Apply',
+        additionalRate: 0,
+        description: 'Turkey is an MFN trading partner. No FTA with the US. Standard MFN rates apply.',
+        effectiveDate: 'Ongoing',
+        source: 'Normal Trade Relations',
+        appliesTo: 'All goods',
+      },
+    ],
+  },
+  {
+    code: 'RU',
+    name: 'Russia',
+    programs: [
+      {
+        name: 'Column 2 (Non-MFN) Rates',
+        additionalRate: 35,
+        description: 'The US suspended Normal Trade Relations (MFN status) for Russia in April 2022 following the invasion of Ukraine. Column 2 (Smoot-Hawley) rates now apply — these are extremely high on many goods (often 45%+ vs the typical MFN rate).',
+        effectiveDate: '2022-04-09',
+        source: 'Public Law 117-110',
+        appliesTo: 'All Russian-origin goods',
+        exceptions: 'Additional OFAC sanctions restrict trade with many Russian entities. Verify legality before importing.',
+      },
+    ],
+  },
+  {
+    code: 'UA',
+    name: 'Ukraine',
+    programs: [
+      {
+        name: 'MFN Rates Apply',
+        additionalRate: 0,
+        description: 'Ukraine is an MFN trading partner. No FTA with the US. Standard MFN rates apply.',
+        effectiveDate: 'Ongoing',
+        source: 'Normal Trade Relations',
+        appliesTo: 'All goods',
+      },
+    ],
+  },
+  // ── Middle East ────────────────────────────────────────────────────────────
+  {
+    code: 'IL',
+    name: 'Israel',
+    preferentialAgreement: 'US-Israel FTA',
+    programs: [
+      {
+        name: 'US-Israel FTA Preference',
+        additionalRate: -999,
+        description: 'The oldest US FTA (1985). Most goods enter duty-free.',
+        effectiveDate: '1985-09-01',
+        source: 'US-Israel FTA',
+        appliesTo: 'Most goods meeting rules of origin',
+        exceptions: 'Agricultural products may have exceptions; rules of origin apply',
+      },
+    ],
+  },
+  {
+    code: 'JO',
+    name: 'Jordan',
+    preferentialAgreement: 'US-Jordan FTA',
+    programs: [
+      {
+        name: 'US-Jordan FTA Preference',
+        additionalRate: -999,
+        description: 'US-Jordan Free Trade Agreement. Most goods enter duty-free.',
+        effectiveDate: '2001-12-17',
+        source: 'US-Jordan FTA',
+        appliesTo: 'Most goods meeting rules of origin',
+        exceptions: 'Some agricultural products phased over time',
+      },
+    ],
+  },
+  {
+    code: 'BH',
+    name: 'Bahrain',
+    preferentialAgreement: 'US-Bahrain FTA',
+    programs: [
+      {
+        name: 'US-Bahrain FTA Preference',
+        additionalRate: -999,
+        description: 'US-Bahrain Free Trade Agreement. Most goods enter duty-free.',
+        effectiveDate: '2006-01-11',
+        source: 'US-Bahrain FTA',
+        appliesTo: 'Most goods meeting rules of origin',
+        exceptions: 'Rules of origin and certificate required',
+      },
+    ],
+  },
+  {
+    code: 'OM',
+    name: 'Oman',
+    preferentialAgreement: 'US-Oman FTA',
+    programs: [
+      {
+        name: 'US-Oman FTA Preference',
+        additionalRate: -999,
+        description: 'US-Oman Free Trade Agreement. Most goods enter duty-free.',
+        effectiveDate: '2009-01-01',
+        source: 'US-Oman FTA',
+        appliesTo: 'Most goods meeting rules of origin',
+        exceptions: 'Rules of origin and certificate required',
+      },
+    ],
+  },
+  {
+    code: 'AE',
+    name: 'United Arab Emirates',
+    programs: [
+      {
+        name: 'MFN Rates Apply',
+        additionalRate: 0,
+        description: 'UAE is an MFN trading partner. No FTA with the US. Standard MFN rates apply.',
+        effectiveDate: 'Ongoing',
+        source: 'Normal Trade Relations',
+        appliesTo: 'All goods',
+      },
+    ],
+  },
+  {
+    code: 'SA',
+    name: 'Saudi Arabia',
+    programs: [
+      {
+        name: 'MFN Rates Apply',
+        additionalRate: 0,
+        description: 'Saudi Arabia is an MFN trading partner. No FTA with the US. Standard MFN rates apply.',
+        effectiveDate: 'Ongoing',
+        source: 'Normal Trade Relations',
+        appliesTo: 'All goods',
+      },
+    ],
+  },
+  // ── Africa ─────────────────────────────────────────────────────────────────
+  {
+    code: 'MA',
+    name: 'Morocco',
+    preferentialAgreement: 'US-Morocco FTA',
+    programs: [
+      {
+        name: 'US-Morocco FTA Preference',
+        additionalRate: -999,
+        description: 'US-Morocco Free Trade Agreement. Most goods enter duty-free or at reduced rates.',
+        effectiveDate: '2006-01-01',
+        source: 'US-Morocco FTA',
+        appliesTo: 'Most goods meeting rules of origin',
+        exceptions: 'Agricultural products have phased reductions; rules of origin apply',
+      },
+    ],
+  },
+  {
+    code: 'ZA',
+    name: 'South Africa',
+    preferentialAgreement: 'AGOA',
+    programs: [
+      {
+        name: 'AGOA Preference',
+        additionalRate: -999,
+        description: 'African Growth and Opportunity Act. Eligible sub-Saharan African goods including apparel may enter duty-free. South Africa is an AGOA beneficiary.',
+        effectiveDate: '2000-10-01',
+        source: 'AGOA',
+        appliesTo: 'AGOA-eligible goods',
+        exceptions: 'Must meet AGOA rules of origin; apparel has yarn-forward or third-country fabric rules; verify current beneficiary status',
+      },
+    ],
+  },
+  {
+    code: 'KE',
+    name: 'Kenya',
+    preferentialAgreement: 'AGOA',
+    programs: [
+      {
+        name: 'AGOA Preference',
+        additionalRate: -999,
+        description: 'AGOA beneficiary. Eligible goods including apparel enter duty-free.',
+        effectiveDate: '2000-10-01',
+        source: 'AGOA',
+        appliesTo: 'AGOA-eligible goods',
+        exceptions: 'Must meet AGOA rules of origin; verify current beneficiary status annually',
+      },
+    ],
+  },
+  {
+    code: 'ET',
+    name: 'Ethiopia',
+    preferentialAgreement: 'AGOA',
+    programs: [
+      {
+        name: 'AGOA Preference',
+        additionalRate: -999,
+        description: 'Ethiopia is an AGOA beneficiary (subject to annual review). Eligible goods enter duty-free.',
+        effectiveDate: '2000-10-01',
+        source: 'AGOA',
+        appliesTo: 'AGOA-eligible goods',
+        exceptions: 'AGOA eligibility is reviewed annually and can be suspended; verify current status',
+      },
+    ],
+  },
+  {
+    code: 'NG',
+    name: 'Nigeria',
+    preferentialAgreement: 'AGOA',
+    programs: [
+      {
+        name: 'AGOA Preference',
+        additionalRate: -999,
+        description: 'Nigeria is an AGOA beneficiary. Eligible goods enter duty-free.',
+        effectiveDate: '2000-10-01',
+        source: 'AGOA',
+        appliesTo: 'AGOA-eligible goods',
+        exceptions: 'Must meet AGOA rules of origin; verify current eligibility',
+      },
+    ],
+  },
+  {
+    code: 'GH',
+    name: 'Ghana',
+    preferentialAgreement: 'AGOA',
+    programs: [
+      {
+        name: 'AGOA Preference',
+        additionalRate: -999,
+        description: 'Ghana is an AGOA beneficiary. Eligible goods enter duty-free.',
+        effectiveDate: '2000-10-01',
+        source: 'AGOA',
+        appliesTo: 'AGOA-eligible goods',
+        exceptions: 'Must meet AGOA rules of origin',
+      },
+    ],
+  },
+  {
+    code: 'EG',
+    name: 'Egypt',
+    programs: [
+      {
+        name: 'MFN Rates Apply',
+        additionalRate: 0,
+        description: 'Egypt is an MFN trading partner. No FTA with the US. Standard MFN rates apply.',
+        effectiveDate: 'Ongoing',
+        source: 'Normal Trade Relations',
+        appliesTo: 'All goods',
+      },
+    ],
+  },
+  // ── Oceania ────────────────────────────────────────────────────────────────
+  {
+    code: 'AU',
+    name: 'Australia',
+    preferentialAgreement: 'US-Australia FTA',
+    programs: [
+      {
+        name: 'US-Australia FTA Preference',
+        additionalRate: -999,
+        description: 'US-Australia Free Trade Agreement. Most goods enter duty-free.',
+        effectiveDate: '2005-01-01',
+        source: 'US-Australia FTA',
+        appliesTo: 'Most goods meeting rules of origin',
+        exceptions: 'Some agricultural goods have tariff-rate quotas; rules of origin apply',
+      },
+    ],
+  },
+  {
+    code: 'NZ',
+    name: 'New Zealand',
+    programs: [
+      {
+        name: 'MFN Rates Apply',
+        additionalRate: 0,
+        description: 'New Zealand is an MFN trading partner. No bilateral FTA with the US. Standard MFN rates apply.',
+        effectiveDate: 'Ongoing',
+        source: 'Normal Trade Relations',
+        appliesTo: 'All goods',
+      },
+    ],
+  },
+  // ── Catch-all ──────────────────────────────────────────────────────────────
   {
     code: 'OTHER',
     name: 'Other Country',
@@ -276,7 +1012,7 @@ export const COUNTRY_PROFILES: CountryProfile[] = [
       {
         name: 'MFN Rates Apply',
         additionalRate: 0,
-        description: 'Standard Most Favored Nation rates apply. Check USITC for country-specific programs.',
+        description: 'Standard Most Favored Nation rates apply. Check USITC for country-specific programs (GSP, AGOA, FTA).',
         effectiveDate: 'Ongoing',
         source: 'USITC',
         appliesTo: 'All goods',
