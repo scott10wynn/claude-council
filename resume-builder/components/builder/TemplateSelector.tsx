@@ -3,13 +3,20 @@
 import { useResumeStore } from '@/lib/store';
 import { COLOR_THEMES, TemplateId } from '@/lib/types';
 import { cn } from '@/lib/utils';
-import { Check } from 'lucide-react';
+import { Check, ShieldCheck, ShieldAlert } from 'lucide-react';
 
-const TEMPLATES: { id: TemplateId; label: string; desc: string; preview: string }[] = [
-  { id: 'modern', label: 'Modern', desc: 'Colored sidebar, bold typography', preview: '◧' },
-  { id: 'classic', label: 'Classic', desc: 'Traditional, ATS-optimized', preview: '▤' },
-  { id: 'minimal', label: 'Minimal', desc: 'Clean, contemporary, spacious', preview: '▭' },
-  { id: 'executive', label: 'Executive', desc: 'Bold header, two-column layout', preview: '▬' },
+const TEMPLATES: {
+  id: TemplateId;
+  label: string;
+  desc: string;
+  preview: string;
+  atsLevel: 'safe' | 'caution';
+  atsNote: string;
+}[] = [
+  { id: 'classic', label: 'Classic', desc: 'Traditional, single-column', preview: '▤', atsLevel: 'safe', atsNote: 'Max ATS compatibility' },
+  { id: 'minimal', label: 'Minimal', desc: 'Clean, contemporary, spacious', preview: '▭', atsLevel: 'safe', atsNote: 'Fully ATS-safe' },
+  { id: 'modern', label: 'Modern', desc: 'Colored sidebar layout', preview: '◧', atsLevel: 'caution', atsNote: 'May scramble in older ATS' },
+  { id: 'executive', label: 'Executive', desc: 'Bold header, two-column', preview: '▬', atsLevel: 'caution', atsNote: 'Multi-column — use for visual only' },
 ];
 
 export function TemplateSelector() {
@@ -18,7 +25,10 @@ export function TemplateSelector() {
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Template</p>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Template</p>
+        <p className="text-xs text-gray-400 mb-2">
+          Use <span className="text-green-700 font-medium">Classic</span> or <span className="text-green-700 font-medium">Minimal</span> when submitting through ATS portals (Workday, Taleo, iCIMS).
+        </p>
         <div className="grid grid-cols-2 gap-2">
           {TEMPLATES.map((t) => (
             <button
@@ -37,6 +47,14 @@ export function TemplateSelector() {
               <div className="text-2xl mb-1 text-gray-400">{t.preview}</div>
               <div className="text-xs font-semibold text-gray-800">{t.label}</div>
               <div className="text-xs text-gray-500 mt-0.5 leading-tight">{t.desc}</div>
+              <div className={cn('flex items-center gap-0.5 mt-1.5 text-xs font-medium',
+                t.atsLevel === 'safe' ? 'text-green-700' : 'text-amber-600'
+              )}>
+                {t.atsLevel === 'safe'
+                  ? <ShieldCheck className="h-3 w-3" />
+                  : <ShieldAlert className="h-3 w-3" />}
+                {t.atsNote}
+              </div>
             </button>
           ))}
         </div>

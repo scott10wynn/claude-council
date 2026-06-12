@@ -14,10 +14,17 @@ import { LanguagesSection } from '@/components/editor/LanguagesSection';
 import { TemplateSelector } from './TemplateSelector';
 import { SectionManager } from './SectionManager';
 import { ATSScore } from './ATSScore';
+import { ATSCompatibility } from './ATSCompatibility';
+import { JobMatcher } from './JobMatcher';
+import { BulletCoach } from './BulletCoach';
 import { cn } from '@/lib/utils';
-import { User, Sliders, LayoutTemplate, BarChart3, ChevronDown, ChevronUp } from 'lucide-react';
+import {
+  User, Sliders, LayoutTemplate, TrendingUp,
+  ChevronDown, ChevronUp, BarChart3, Shield, Briefcase, Zap,
+} from 'lucide-react';
 
-type Tab = 'content' | 'design' | 'sections' | 'score';
+type Tab = 'content' | 'design' | 'sections' | 'optimize';
+type OptimizeSubTab = 'score' | 'compat' | 'bullets' | 'match';
 
 const SECTION_COMPONENTS: Record<SectionId, React.ComponentType> = {
   summary: SummarySection,
@@ -29,7 +36,11 @@ const SECTION_COMPONENTS: Record<SectionId, React.ComponentType> = {
   languages: LanguagesSection,
 };
 
-function CollapsibleBlock({ title, defaultOpen = false, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) {
+function CollapsibleBlock({
+  title, defaultOpen = false, children,
+}: {
+  title: string; defaultOpen?: boolean; children: React.ReactNode;
+}) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
@@ -39,11 +50,13 @@ function CollapsibleBlock({ title, defaultOpen = false, children }: { title: str
         onClick={() => setOpen(!open)}
       >
         <span className="text-sm font-semibold text-gray-800">{title}</span>
-        {open ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+        {open
+          ? <ChevronUp className="h-4 w-4 text-gray-400" />
+          : <ChevronDown className="h-4 w-4 text-gray-400" />}
       </button>
       {open && (
-        <div className="px-4 pb-4 border-t border-gray-100">
-          <div className="pt-3">{children}</div>
+        <div className="px-4 pb-4 border-t border-gray-100 pt-3">
+          {children}
         </div>
       )}
     </div>
@@ -52,20 +65,28 @@ function CollapsibleBlock({ title, defaultOpen = false, children }: { title: str
 
 export function EditorPanel() {
   const [tab, setTab] = useState<Tab>('content');
+  const [optTab, setOptTab] = useState<OptimizeSubTab>('score');
   const { settings } = useResumeStore();
 
-  const tabs = [
-    { id: 'content' as Tab, label: 'Content', icon: User },
-    { id: 'design' as Tab, label: 'Design', icon: LayoutTemplate },
+  const mainTabs = [
+    { id: 'content' as Tab,  label: 'Content',  icon: User },
+    { id: 'design' as Tab,   label: 'Design',   icon: LayoutTemplate },
     { id: 'sections' as Tab, label: 'Sections', icon: Sliders },
-    { id: 'score' as Tab, label: 'ATS', icon: BarChart3 },
+    { id: 'optimize' as Tab, label: 'Optimize', icon: TrendingUp },
+  ];
+
+  const optimizeTabs = [
+    { id: 'score' as OptimizeSubTab,   label: 'Score',   icon: BarChart3 },
+    { id: 'compat' as OptimizeSubTab,  label: 'ATS',     icon: Shield },
+    { id: 'bullets' as OptimizeSubTab, label: 'Bullets', icon: Zap },
+    { id: 'match' as OptimizeSubTab,   label: 'Job Fit', icon: Briefcase },
   ];
 
   return (
     <div className="flex flex-col h-full">
-      {/* Tab bar */}
+      {/* Main tab bar */}
       <div className="flex border-b border-gray-200 bg-white shrink-0">
-        {tabs.map(({ id, label, icon: Icon }) => (
+        {mainTabs.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setTab(id)}
@@ -73,7 +94,7 @@ export function EditorPanel() {
               'flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-medium transition-colors border-b-2 -mb-px',
               tab === id
                 ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+                : 'border-transparent text-gray-500 hover:text-gray-700',
             )}
           >
             <Icon className="h-3.5 w-3.5" />
@@ -82,8 +103,30 @@ export function EditorPanel() {
         ))}
       </div>
 
+      {/* Optimize sub-tab bar */}
+      {tab === 'optimize' && (
+        <div className="flex border-b border-gray-100 bg-gray-50 shrink-0">
+          {optimizeTabs.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              onClick={() => setOptTab(id)}
+              className={cn(
+                'flex-1 flex items-center justify-center gap-1 py-2 text-xs font-medium transition-colors border-b-2 -mb-px',
+                optTab === id
+                  ? 'border-blue-500 text-blue-600 bg-white'
+                  : 'border-transparent text-gray-400 hover:text-gray-600',
+              )}
+            >
+              <Icon className="h-3 w-3" />
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
+
         {tab === 'content' && (
           <>
             <CollapsibleBlock title="Contact Information" defaultOpen>
@@ -112,7 +155,14 @@ export function EditorPanel() {
           </div>
         )}
 
-        {tab === 'score' && <ATSScore />}
+        {tab === 'optimize' && optTab === 'score'   && <ATSScore />}
+        {tab === 'optimize' && optTab === 'compat'  && <ATSCompatibility />}
+        {tab === 'optimize' && optTab === 'bullets' && <BulletCoach />}
+        {tab === 'optimize' && optTab === 'match'   && (
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <JobMatcher />
+          </div>
+        )}
       </div>
     </div>
   );
