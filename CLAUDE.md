@@ -25,8 +25,7 @@
 ## Trading Rules
 
 When helping with any trade, order, or investment decision:
-- Always read `docs/trading-strategy.md` before proceeding
-- Use the `/trade` command workflow for any order placement
+- Use the `/trade` command workflow for any order placement (rules are embedded in the command — do not read `docs/trading-strategy.md` separately)
 - Never place an order without a defined stop loss and price target from the user
 - Never exceed the 2% portfolio risk rule per trade without explicit user override
 - Always call `review_equity_order` before `place_equity_order`
