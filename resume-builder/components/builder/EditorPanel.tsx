@@ -14,10 +14,11 @@ import { LanguagesSection } from '@/components/editor/LanguagesSection';
 import { TemplateSelector } from './TemplateSelector';
 import { SectionManager } from './SectionManager';
 import { ATSScore } from './ATSScore';
+import { CoverLetterPanel } from './CoverLetterPanel';
 import { cn } from '@/lib/utils';
-import { User, Sliders, LayoutTemplate, BarChart3, ChevronDown, ChevronUp } from 'lucide-react';
+import { User, Sliders, LayoutTemplate, BarChart3, ChevronDown, ChevronUp, FileText } from 'lucide-react';
 
-type Tab = 'content' | 'design' | 'sections' | 'score';
+type Tab = 'content' | 'design' | 'sections' | 'score' | 'cover';
 
 const SECTION_COMPONENTS: Record<SectionId, React.ComponentType> = {
   summary: SummarySection,
@@ -59,18 +60,19 @@ export function EditorPanel() {
     { id: 'design' as Tab, label: 'Design', icon: LayoutTemplate },
     { id: 'sections' as Tab, label: 'Sections', icon: Sliders },
     { id: 'score' as Tab, label: 'ATS', icon: BarChart3 },
+    { id: 'cover' as Tab, label: 'Cover Letter', icon: FileText },
   ];
 
   return (
     <div className="flex flex-col h-full">
       {/* Tab bar */}
-      <div className="flex border-b border-gray-200 bg-white shrink-0">
+      <div className="flex overflow-x-auto border-b border-gray-200 bg-white shrink-0 scrollbar-hide">
         {tabs.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setTab(id)}
             className={cn(
-              'flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-medium transition-colors border-b-2 -mb-px',
+              'flex shrink-0 items-center justify-center gap-1.5 px-3 py-3 text-xs font-medium transition-colors border-b-2 -mb-px whitespace-nowrap',
               tab === id
                 ? 'border-blue-600 text-blue-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -113,6 +115,8 @@ export function EditorPanel() {
         )}
 
         {tab === 'score' && <ATSScore />}
+
+        {tab === 'cover' && <CoverLetterPanel />}
       </div>
     </div>
   );
