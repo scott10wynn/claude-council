@@ -1,7 +1,7 @@
 ---
 description: Place a trade on Robinhood with full strategy enforcement — position sizing, stop loss validation, risk/reward check, and confirmation gate. Triggers on any mention of buying/selling a stock, placing an order, or trading a specific ticker. NEVER place an order without going through this full workflow.
 argument-hint: [buy|sell] [TICKER] [shares|dollars] ["reason or context"]
-allowed-tools: mcp__robinhood-trading__get_portfolio, mcp__robinhood-trading__get_equity_positions, mcp__robinhood-trading__get_equity_quotes, mcp__robinhood-trading__get_equity_tradability, mcp__robinhood-trading__review_equity_order, mcp__robinhood-trading__place_equity_order, mcp__robinhood-trading__get_equity_orders, AskUserQuestion, Read
+allowed-tools: mcp__robinhood-trading__get_portfolio, mcp__robinhood-trading__get_equity_positions, mcp__robinhood-trading__get_equity_quotes, mcp__robinhood-trading__get_equity_tradability, mcp__robinhood-trading__review_equity_order, mcp__robinhood-trading__place_equity_order, mcp__robinhood-trading__get_equity_orders, AskUserQuestion, Read, WebSearch
 ---
 
 # Trade Command — Strategy-Enforced Order Workflow
@@ -51,6 +51,45 @@ Call `get_equity_quotes` for the ticker. Show:
 - 52-week range (if available)
 
 Also call `get_equity_tradability` to confirm the stock can be traded.
+
+---
+
+## Step 3b — Company News
+
+Before the checklist, search for recent news on the ticker. Use `WebSearch` with the query:
+```
+{TICKER} stock news site:reuters.com OR site:bloomberg.com OR site:finance.yahoo.com OR site:seekingalpha.com
+```
+
+Then do a second search for any catalyst or risk events:
+```
+{TICKER} earnings guidance SEC filing lawsuit recall 2026
+```
+
+Summarize the top 3–5 items in a compact block:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  LATEST NEWS — {TICKER}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  [date] Headline one — source
+  [date] Headline two — source
+  [date] Headline three — source
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+Flag any of the following as **high-risk events** if found:
+- Earnings report within 5 days
+- Active SEC investigation or lawsuit
+- Product recall or safety warning
+- Guidance cut or revenue miss
+- Insider selling above $10M
+- Major analyst downgrade
+
+If a high-risk event is found, say:
+> ⚠ High-risk event detected: {description}. You may want to wait or reduce size.
+
+Then continue to Step 4.
 
 ---
 
