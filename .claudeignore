@@ -1,0 +1,20 @@
+# Dependencies
+**/node_modules/
+**/node_modules/**
+
+# Lock files
+**/package-lock.json
+**/yarn.lock
+**/pnpm-lock.yaml
+
+# Build output
+**/.next/
+**/dist/
+**/build/
+**/.turbo/
+
+# Git internals
+.git/
+
+# Large CSV data files (skills reference data)
+skills/design/ui-ux-pro-max/data/**
