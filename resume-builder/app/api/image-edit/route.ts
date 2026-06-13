@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const MODEL = 'timothybrooks/instruct-pix2pix';
+const MODEL = 'black-forest-labs/flux-kontext-pro';
 
 export async function POST(req: NextRequest) {
   const apiToken = process.env.REPLICATE_API_TOKEN;
@@ -25,16 +25,11 @@ export async function POST(req: NextRequest) {
     headers: {
       Authorization: `Token ${apiToken}`,
       'Content-Type': 'application/json',
-      Prefer: 'wait',
     },
     body: JSON.stringify({
       input: {
-        image: dataUrl,
+        input_image: dataUrl,
         prompt: instruction.trim(),
-        num_outputs: 1,
-        num_inference_steps: 50,
-        image_guidance_scale: 1.5,
-        guidance_scale: 7.5,
       },
     }),
   });
