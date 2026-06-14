@@ -183,6 +183,123 @@ async function searchDepop(query, { maxPrice, minPrice } = {}) {
   };
 }
 
+async function searchHiBid(query, { maxPrice, minPrice } = {}) {
+  const params = new URLSearchParams({
+    searchTerm: query,
+    webcast: "false",
+    sort: "lowestprice",
+    pageSize: "20",
+    page: "1",
+  });
+
+  const data = await fetchJSON(`https://www.hibid.com/catalog/lots?${params}`, {
+    headers: {
+      Accept: "application/json",
+      "X-Requested-With": "XMLHttpRequest",
+    },
+  });
+
+  const lots = data?.lots || data?.items || data?.results || [];
+  return {
+    source: "HiBid",
+    items: lots
+      .map((lot) => {
+        const price = parseFloat(lot.currentBid ?? lot.currentPrice ?? lot.startingBid ?? 0);
+        return {
+          title: lot.title || lot.description,
+          price,
+          shipping: 0,
+          total: price || null,
+          condition: "Auction",
+          url: lot.url || (lot.lotId ? `https://www.hibid.com/lot/${lot.lotId}` : null),
+          source: "HiBid",
+        };
+      })
+      .filter((item) => {
+        if (minPrice != null && item.total != null && item.total < minPrice) return false;
+        if (maxPrice != null && item.total != null && item.total > maxPrice) return false;
+        return true;
+      }),
+  };
+}
+
+async function searchShopGoodwill(query, { maxPrice, minPrice } = {}) {
+  const body = JSON.stringify({
+    searchText: query,
+    categoryId: 0,
+    sortColumn: "1",
+    sortDescending: false,
+    pageNumber: 1,
+    pageSize: 20,
+    showEnded: false,
+  });
+
+  const data = await fetchJSON("https://www.shopgoodwill.com/api/Search/ItemListing", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Content-Length": String(Buffer.byteLength(body)),
+      Accept: "application/json",
+    },
+    body,
+  });
+
+  const items = data?.searchResults?.items || data?.items || [];
+  return {
+    source: "ShopGoodwill",
+    items: items
+      .map((item) => {
+        const price = parseFloat(item.currentPrice ?? item.minBidAmount ?? 0);
+        const shipping = parseFloat(item.shippingPrice ?? 0);
+        return {
+          title: item.title,
+          price,
+          shipping,
+          total: price + shipping || null,
+          condition: "Used (Auction)",
+          seller: item.sellerName,
+          url: item.itemId ? `https://www.shopgoodwill.com/Item/${item.itemId}` : null,
+          source: "ShopGoodwill",
+        };
+      })
+      .filter((item) => {
+        if (minPrice != null && item.total != null && item.total < minPrice) return false;
+        if (maxPrice != null && item.total != null && item.total > maxPrice) return false;
+        return true;
+      }),
+  };
+}
+
+async function searchAuctionOLA(query, { maxPrice, minPrice } = {}) {
+  const params = new URLSearchParams({ q: query, sort: "price_asc", per_page: "20" });
+  const data = await fetchJSON(`https://www.auctionola.com/api/search?${params}`, {
+    headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
+  });
+
+  const lots = data?.lots || data?.items || data?.results || [];
+  return {
+    source: "AuctionOLA",
+    items: lots
+      .map((lot) => {
+        const price = parseFloat(lot.currentBid ?? lot.currentPrice ?? lot.price ?? 0);
+        return {
+          title: lot.title || lot.name,
+          price,
+          shipping: 0,
+          total: price || null,
+          condition: "Auction",
+          url: lot.url || lot.link || (lot.id ? `https://www.auctionola.com/lot/${lot.id}` : null),
+          source: "AuctionOLA",
+        };
+      })
+      .filter((item) => {
+        if (minPrice != null && item.total != null && item.total < minPrice) return false;
+        if (maxPrice != null && item.total != null && item.total > maxPrice) return false;
+        return true;
+      }),
+  };
+}
+
 async function searchCraigslist(query, city = "newyork") {
   const url = `https://${city}.craigslist.org/search/sss?format=rss&query=${encodeURIComponent(query)}&sort=priceasc`;
   const text = await fetchText(url, {
@@ -235,18 +352,21 @@ server.tool(
       .default("newyork")
       .describe("Craigslist city slug: newyork, sfbay, chicago, losangeles, houston, seattle, boston, denver, etc."),
     sources: z
-      .array(z.enum(["ebay", "bestbuy", "craigslist", "depop"]))
+      .array(z.enum(["ebay", "bestbuy", "craigslist", "depop", "hibid", "shopgoodwill", "auctionola"]))
       .optional()
       .describe("Which marketplaces to search (default: all)"),
   },
   async ({ query, condition, max_price, min_price, city, sources }) => {
-    const activeSources = sources ?? ["ebay", "bestbuy", "craigslist", "depop"];
+    const activeSources = sources ?? ["ebay", "bestbuy", "craigslist", "depop", "hibid", "shopgoodwill", "auctionola"];
 
     const fetches = [];
     if (activeSources.includes("ebay")) fetches.push(searchEbay(query, { condition, maxPrice: max_price, minPrice: min_price }));
     if (activeSources.includes("bestbuy")) fetches.push(searchBestBuy(query, { maxPrice: max_price }));
     if (activeSources.includes("craigslist")) fetches.push(searchCraigslist(query, city));
     if (activeSources.includes("depop")) fetches.push(searchDepop(query, { maxPrice: max_price, minPrice: min_price }));
+    if (activeSources.includes("hibid")) fetches.push(searchHiBid(query, { maxPrice: max_price, minPrice: min_price }));
+    if (activeSources.includes("shopgoodwill")) fetches.push(searchShopGoodwill(query, { maxPrice: max_price, minPrice: min_price }));
+    if (activeSources.includes("auctionola")) fetches.push(searchAuctionOLA(query, { maxPrice: max_price, minPrice: min_price }));
 
     const settled = await Promise.allSettled(fetches);
     const allResults = settled.map((r) => (r.status === "fulfilled" ? r.value : { source: "unknown", items: [] }));
