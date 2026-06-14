@@ -141,6 +141,48 @@ async function searchBestBuy(query, { maxPrice } = {}) {
   };
 }
 
+async function searchDepop(query, { maxPrice, minPrice } = {}) {
+  const params = new URLSearchParams({
+    q: query,
+    country: "us",
+    currency: "USD",
+    numberOfResults: "20",
+    sort: "priceAscending",
+  });
+  const url = `https://webapi.depop.com/api/v2/search/products/?${params}`;
+
+  const data = await fetchJSON(url, {
+    headers: {
+      Accept: "application/json",
+      "depop-user-type": "guest",
+    },
+  });
+
+  const products = data?.products || [];
+  return {
+    source: "Depop",
+    items: products
+      .map((p) => {
+        const price = parseFloat(p.price?.priceAmount ?? p.priceAmount ?? 0);
+        return {
+          title: p.title || p.slug?.replace(/-/g, " ") || "Depop listing",
+          price,
+          shipping: 0,
+          total: price || null,
+          condition: "Used",
+          seller: p.seller?.username,
+          url: `https://www.depop.com/products/${p.slug}/`,
+          source: "Depop",
+        };
+      })
+      .filter((item) => {
+        if (minPrice != null && item.total != null && item.total < minPrice) return false;
+        if (maxPrice != null && item.total != null && item.total > maxPrice) return false;
+        return true;
+      }),
+  };
+}
+
 async function searchCraigslist(query, city = "newyork") {
   const url = `https://${city}.craigslist.org/search/sss?format=rss&query=${encodeURIComponent(query)}&sort=priceasc`;
   const text = await fetchText(url, {
@@ -193,17 +235,18 @@ server.tool(
       .default("newyork")
       .describe("Craigslist city slug: newyork, sfbay, chicago, losangeles, houston, seattle, boston, denver, etc."),
     sources: z
-      .array(z.enum(["ebay", "bestbuy", "craigslist"]))
+      .array(z.enum(["ebay", "bestbuy", "craigslist", "depop"]))
       .optional()
       .describe("Which marketplaces to search (default: all)"),
   },
   async ({ query, condition, max_price, min_price, city, sources }) => {
-    const activeSources = sources ?? ["ebay", "bestbuy", "craigslist"];
+    const activeSources = sources ?? ["ebay", "bestbuy", "craigslist", "depop"];
 
     const fetches = [];
     if (activeSources.includes("ebay")) fetches.push(searchEbay(query, { condition, maxPrice: max_price, minPrice: min_price }));
     if (activeSources.includes("bestbuy")) fetches.push(searchBestBuy(query, { maxPrice: max_price }));
     if (activeSources.includes("craigslist")) fetches.push(searchCraigslist(query, city));
+    if (activeSources.includes("depop")) fetches.push(searchDepop(query, { maxPrice: max_price, minPrice: min_price }));
 
     const settled = await Promise.allSettled(fetches);
     const allResults = settled.map((r) => (r.status === "fulfilled" ? r.value : { source: "unknown", items: [] }));
