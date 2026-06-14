@@ -300,6 +300,137 @@ async function searchAuctionOLA(query, { maxPrice, minPrice } = {}) {
   };
 }
 
+async function searchWhatnot(query, { maxPrice, minPrice } = {}) {
+  const params = new URLSearchParams({ q: query, sort: "price_asc", limit: "20" });
+  const data = await fetchJSON(`https://www.whatnot.com/api/search/listings?${params}`, {
+    headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
+  });
+
+  const items = data?.results || data?.listings || data?.items || [];
+  return {
+    source: "Whatnot",
+    items: items
+      .map((item) => {
+        const price = parseFloat(item.currentPrice ?? item.buyNowPrice ?? item.price ?? 0);
+        return {
+          title: item.title || item.name,
+          price,
+          shipping: 0,
+          total: price || null,
+          condition: "Live Auction",
+          seller: item.seller?.username || item.sellerName,
+          url: item.url || (item.id ? `https://www.whatnot.com/listings/${item.id}` : null),
+          source: "Whatnot",
+        };
+      })
+      .filter((item) => {
+        if (minPrice != null && item.total != null && item.total < minPrice) return false;
+        if (maxPrice != null && item.total != null && item.total > maxPrice) return false;
+        return true;
+      }),
+  };
+}
+
+async function searchHeritageAuctions(query, { maxPrice, minPrice } = {}) {
+  const params = new URLSearchParams({
+    keyword: query,
+    status: "0",
+    sort: "currentBid",
+    pageSize: "20",
+  });
+  const data = await fetchJSON(`https://api.ha.com/c/mobileapi/v1/searchResults?${params}`, {
+    headers: { Accept: "application/json" },
+  });
+
+  const lots = data?.lots || data?.results || data?.items || [];
+  return {
+    source: "Heritage Auctions",
+    items: lots
+      .map((lot) => {
+        const price = parseFloat(lot.currentBid ?? lot.startingBid ?? lot.openingBid ?? 0);
+        return {
+          title: lot.title || lot.description,
+          price,
+          shipping: 0,
+          total: price || null,
+          condition: "Auction",
+          url: lot.url || (lot.lotId ? `https://ha.com/lot/${lot.lotId}` : null),
+          source: "Heritage Auctions",
+        };
+      })
+      .filter((item) => {
+        if (minPrice != null && item.total != null && item.total < minPrice) return false;
+        if (maxPrice != null && item.total != null && item.total > maxPrice) return false;
+        return true;
+      }),
+  };
+}
+
+async function searchAuctionOhio(query, { maxPrice, minPrice } = {}) {
+  const params = new URLSearchParams({
+    q: query,
+    sort: "price_asc",
+    format: "json",
+    limit: "20",
+  });
+  const data = await fetchJSON(`https://www.auctionohio.com/search?${params}`, {
+    headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
+  });
+
+  const lots = data?.lots || data?.items || data?.results || [];
+  return {
+    source: "Auction Ohio",
+    items: lots
+      .map((lot) => {
+        const price = parseFloat(lot.currentBid ?? lot.currentPrice ?? lot.price ?? 0);
+        return {
+          title: lot.title || lot.name,
+          price,
+          shipping: 0,
+          total: price || null,
+          condition: "Auction",
+          url: lot.url || lot.link || (lot.id ? `https://www.auctionohio.com/lot/${lot.id}` : null),
+          source: "Auction Ohio",
+        };
+      })
+      .filter((item) => {
+        if (minPrice != null && item.total != null && item.total < minPrice) return false;
+        if (maxPrice != null && item.total != null && item.total > maxPrice) return false;
+        return true;
+      }),
+  };
+}
+
+async function searchGSAAuctions(query, { maxPrice, minPrice } = {}) {
+  const params = new URLSearchParams({ srchStr: query, so: "1", sapar: "1" });
+  const data = await fetchJSON(`https://gsaauctions.gov/api/search?${params}`, {
+    headers: { Accept: "application/json" },
+  });
+
+  const items = data?.auctions || data?.items || data?.results || [];
+  return {
+    source: "GSA Auctions",
+    items: items
+      .map((item) => {
+        const price = parseFloat(item.currentBid ?? item.openingBid ?? item.price ?? 0);
+        return {
+          title: item.title || item.description,
+          price,
+          shipping: 0,
+          total: price || null,
+          condition: "Government Surplus (Auction)",
+          url: item.url || (item.saleId ? `https://gsaauctions.gov/gsaauctions/auctiondetail?saleId=${item.saleId}` : null),
+          source: "GSA Auctions",
+        };
+      })
+      .filter((item) => {
+        if (minPrice != null && item.total != null && item.total < minPrice) return false;
+        if (maxPrice != null && item.total != null && item.total > maxPrice) return false;
+        return true;
+      }),
+  };
+}
+
 async function searchLiquidation(query, { maxPrice, minPrice } = {}) {
   const params = new URLSearchParams({
     keyword: query,
@@ -390,12 +521,12 @@ server.tool(
       .default("newyork")
       .describe("Craigslist city slug: newyork, sfbay, chicago, losangeles, houston, seattle, boston, denver, etc."),
     sources: z
-      .array(z.enum(["ebay", "bestbuy", "craigslist", "depop", "hibid", "shopgoodwill", "auctionola", "liquidation"]))
+      .array(z.enum(["ebay", "bestbuy", "craigslist", "depop", "hibid", "shopgoodwill", "auctionola", "liquidation", "whatnot", "heritage", "auctionohio", "gsa"]))
       .optional()
       .describe("Which marketplaces to search (default: all)"),
   },
   async ({ query, condition, max_price, min_price, city, sources }) => {
-    const activeSources = sources ?? ["ebay", "bestbuy", "craigslist", "depop", "hibid", "shopgoodwill", "auctionola", "liquidation"];
+    const activeSources = sources ?? ["ebay", "bestbuy", "craigslist", "depop", "hibid", "shopgoodwill", "auctionola", "liquidation", "whatnot", "heritage", "auctionohio", "gsa"];
 
     const fetches = [];
     if (activeSources.includes("ebay")) fetches.push(searchEbay(query, { condition, maxPrice: max_price, minPrice: min_price }));
@@ -406,6 +537,10 @@ server.tool(
     if (activeSources.includes("shopgoodwill")) fetches.push(searchShopGoodwill(query, { maxPrice: max_price, minPrice: min_price }));
     if (activeSources.includes("auctionola")) fetches.push(searchAuctionOLA(query, { maxPrice: max_price, minPrice: min_price }));
     if (activeSources.includes("liquidation")) fetches.push(searchLiquidation(query, { maxPrice: max_price, minPrice: min_price }));
+    if (activeSources.includes("whatnot")) fetches.push(searchWhatnot(query, { maxPrice: max_price, minPrice: min_price }));
+    if (activeSources.includes("heritage")) fetches.push(searchHeritageAuctions(query, { maxPrice: max_price, minPrice: min_price }));
+    if (activeSources.includes("auctionohio")) fetches.push(searchAuctionOhio(query, { maxPrice: max_price, minPrice: min_price }));
+    if (activeSources.includes("gsa")) fetches.push(searchGSAAuctions(query, { maxPrice: max_price, minPrice: min_price }));
 
     const settled = await Promise.allSettled(fetches);
     const allResults = settled.map((r) => (r.status === "fulfilled" ? r.value : { source: "unknown", items: [] }));
