@@ -31,6 +31,16 @@
         "ADZUNA_APP_ID": "",
         "ADZUNA_APP_KEY": ""
       }
+    },
+    "marketplace-price-comparison": {
+      "command": "node",
+      "args": ["$CLAUDE_PROJECT_DIR/mcp-servers/marketplace/index.js"],
+      "description": "Compare prices across eBay, BestBuy, and Craigslist for any product",
+      "env": {
+        "EBAY_CLIENT_ID": "",
+        "EBAY_CLIENT_SECRET": "",
+        "BESTBUY_API_KEY": ""
+      }
     }
   },
   "hooks": {
