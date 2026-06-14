@@ -300,6 +300,44 @@ async function searchAuctionOLA(query, { maxPrice, minPrice } = {}) {
   };
 }
 
+async function searchLiquidation(query, { maxPrice, minPrice } = {}) {
+  const params = new URLSearchParams({
+    keyword: query,
+    sort: "price_asc",
+    limit: "20",
+  });
+
+  const data = await fetchJSON(`https://www.liquidation.com/auction/search?${params}`, {
+    headers: {
+      Accept: "application/json",
+      "X-Requested-With": "XMLHttpRequest",
+    },
+  });
+
+  const auctions = data?.auctions || data?.items || data?.results || [];
+  return {
+    source: "Liquidation.com",
+    items: auctions
+      .map((a) => {
+        const price = parseFloat(a.currentBid ?? a.currentPrice ?? a.startingBid ?? 0);
+        return {
+          title: a.title || a.name,
+          price,
+          shipping: 0,
+          total: price || null,
+          condition: "Liquidation (Auction)",
+          url: a.url || (a.id ? `https://www.liquidation.com/auction/view?id=${a.id}` : null),
+          source: "Liquidation.com",
+        };
+      })
+      .filter((item) => {
+        if (minPrice != null && item.total != null && item.total < minPrice) return false;
+        if (maxPrice != null && item.total != null && item.total > maxPrice) return false;
+        return true;
+      }),
+  };
+}
+
 async function searchCraigslist(query, city = "newyork") {
   const url = `https://${city}.craigslist.org/search/sss?format=rss&query=${encodeURIComponent(query)}&sort=priceasc`;
   const text = await fetchText(url, {
@@ -352,12 +390,12 @@ server.tool(
       .default("newyork")
       .describe("Craigslist city slug: newyork, sfbay, chicago, losangeles, houston, seattle, boston, denver, etc."),
     sources: z
-      .array(z.enum(["ebay", "bestbuy", "craigslist", "depop", "hibid", "shopgoodwill", "auctionola"]))
+      .array(z.enum(["ebay", "bestbuy", "craigslist", "depop", "hibid", "shopgoodwill", "auctionola", "liquidation"]))
       .optional()
       .describe("Which marketplaces to search (default: all)"),
   },
   async ({ query, condition, max_price, min_price, city, sources }) => {
-    const activeSources = sources ?? ["ebay", "bestbuy", "craigslist", "depop", "hibid", "shopgoodwill", "auctionola"];
+    const activeSources = sources ?? ["ebay", "bestbuy", "craigslist", "depop", "hibid", "shopgoodwill", "auctionola", "liquidation"];
 
     const fetches = [];
     if (activeSources.includes("ebay")) fetches.push(searchEbay(query, { condition, maxPrice: max_price, minPrice: min_price }));
@@ -367,6 +405,7 @@ server.tool(
     if (activeSources.includes("hibid")) fetches.push(searchHiBid(query, { maxPrice: max_price, minPrice: min_price }));
     if (activeSources.includes("shopgoodwill")) fetches.push(searchShopGoodwill(query, { maxPrice: max_price, minPrice: min_price }));
     if (activeSources.includes("auctionola")) fetches.push(searchAuctionOLA(query, { maxPrice: max_price, minPrice: min_price }));
+    if (activeSources.includes("liquidation")) fetches.push(searchLiquidation(query, { maxPrice: max_price, minPrice: min_price }));
 
     const settled = await Promise.allSettled(fetches);
     const allResults = settled.map((r) => (r.status === "fulfilled" ? r.value : { source: "unknown", items: [] }));
