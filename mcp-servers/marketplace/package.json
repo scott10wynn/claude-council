@@ -1,0 +1,14 @@
+{
+  "name": "marketplace-price-comparison",
+  "version": "1.0.0",
+  "description": "MCP server comparing prices across eBay, BestBuy, and Craigslist",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.22.0"
+  }
+}
