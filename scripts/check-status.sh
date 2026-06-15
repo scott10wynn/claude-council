@@ -170,12 +170,12 @@ echo ""
 
 # Summary
 available=0
-[[ "$gemini_status" == ok:* ]] && ((available++))
-[[ "$openai_status" == ok:* ]] && ((available++))
-[[ "$grok_status" == ok:* ]] && ((available++))
-[[ "$perplexity_status" == ok:* ]] && ((available++))
-[[ "$codex_status" == ok:* ]] && ((available++))
-[[ "$gemini_cli_status" == ok:* ]] && ((available++))
+[[ "$gemini_status" == ok:* ]] && (( ++available ))
+[[ "$openai_status" == ok:* ]] && (( ++available ))
+[[ "$grok_status" == ok:* ]] && (( ++available ))
+[[ "$perplexity_status" == ok:* ]] && (( ++available ))
+[[ "$codex_status" == ok:* ]] && (( ++available ))
+[[ "$gemini_cli_status" == ok:* ]] && (( ++available ))
 
 echo -e "${DIM}${available}/6 providers available${RESET}"
 echo ""
