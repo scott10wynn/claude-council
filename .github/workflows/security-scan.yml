@@ -83,7 +83,9 @@ jobs:
           set +e
           FAIL=0
 
-          # Common secret patterns
+          # Placeholder strings that are intentionally fake — skip these
+          PLACEHOLDER_PATTERN='your[-_]|yourpassword|your-key|CHANGE.ME|example|placeholder|xxxx|XXXX|<[A-Z_]+>|sk-ant-your'
+
           declare -A PATTERNS=(
             ["AWS Access Key"]='AKIA[0-9A-Z]{16}'
             ["AWS Secret Key"]='(?i)aws.{0,20}secret.{0,20}['\''"][0-9a-zA-Z/+=]{40}'
@@ -95,7 +97,10 @@ jobs:
 
           for name in "${!PATTERNS[@]}"; do
             MATCHES=$(git grep -rPn "${PATTERNS[$name]}" \
-              -- ':!*.yml' ':!*.yaml' ':!*.lock' ':!node_modules' ':!.git' 2>/dev/null || true)
+              -- ':!*.yml' ':!*.yaml' ':!*.lock' ':!node_modules' ':!.git' ':!*.env.example' ':!**/.env.example' \
+              2>/dev/null \
+              | grep -vE "$PLACEHOLDER_PATTERN" \
+              || true)
             if [ -n "$MATCHES" ]; then
               echo "::warning::Possible $name found:"
               echo "$MATCHES"
