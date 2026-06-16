@@ -1,6 +1,6 @@
 {
   "name": "claude-council",
-  "version": "2026.6.11",
+  "version": "2026.6.12",
   "description": "Multi-agent AI development team: consult Gemini, OpenAI, Grok, Perplexity for diverse perspectives, plus 50+ GODMODE skills for security, development, design, testing, infrastructure, and cross-model dispute resolution",
   "author": {
     "name": "hex"
