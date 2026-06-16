@@ -2,23 +2,22 @@
 
 ## Stack
 
-- **Language**: TypeScript / Node 20
-- **Framework**: Next.js 14 (App Router)
-- **DB**: PostgreSQL via Prisma
+- **Language**: Bash
+- **Type**: Claude Code plugin (`skills/`, `commands/`, `agents/` + shell scripts in `scripts/`)
+- **External calls**: `curl` + `jq` against provider APIs (Gemini, OpenAI, Grok, Perplexity) or the `codex`/`gemini` CLIs
 
 ## Conventions
 
-- Use functional components; no class components.
-- Prefer named exports.
-- Run `npm run lint` before committing.
+- New capabilities go in `skills/` (auto-triggered) with a thin `commands/*.md` wrapper for explicit slash invocation, following the existing pairing convention (e.g. `make-plan` skill + `planning` command).
+- Bump the version in `.claude-plugin/plugin.json` on any change users should pull.
 
 ## Commands
 
-| Task  | Command         |
-|-------|-----------------|
-| Dev   | `npm run dev`   |
-| Test  | `npm test`      |
-| Build | `npm run build` |
+| Task          | Command                          |
+|---------------|-----------------------------------|
+| Run all tests | `./tests/run_tests.sh`            |
+| Run one suite | `bats tests/<name>.bats`          |
+| Check status  | `bash scripts/check-status.sh`    |
 
 ---
 
